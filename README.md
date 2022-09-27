@@ -12,10 +12,18 @@ Since the rtde code of python-urx does not support many feature required for 12I
 
 ur-rtde is included.
 
-# Direction
-robUR3.py is an exampe code to control a UR3 robot.
+# Direction of using TweakRobot.py
+ROBODK example.
 robDK.py is an example code to control a UR3 simulation robot defined in RoboDK. You will need RoboDK to use this.
 
+Example:
+Under the robodk_model folder, double click on "12IDBfinal.rdk" on windows machine.
+Then, run the python code
+> python TweakRobot.py roboDK
+
+To run your own UR robot, you will need to enter its IP.
 If you would like to tweak your robot, try
 Example:
 > python TweakRobot.py 164.54.xxx.xxx
+
+# robDK.py
