@@ -356,9 +356,9 @@ def showcamera(rob, obj_distance=0.12):
             rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,400) #This sets the focus to a value of i
         if key == 49: #1
             rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,450) #This sets the focus to a value of i
-        if key == 50:
+        if key == 50: #2
             rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,475) #This sets the focus to a value of i
-        if key == 51:
+        if key == 51: #3
             rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,500) #This sets the focus to a value of i
         if key == 52:
             rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,525) #This sets the focus to a value of i
@@ -396,11 +396,13 @@ def showcamera(rob, obj_distance=0.12):
             rob.camera.scanfocus()
         if key == 104: #h
             print("Help:")
-            print("  focal point change: 1, 2, 3, and 4")
+            print("  focal point change: 0, 1, 2, .. 7")
             print("  focal point change: a (auto), x(manual), s(scan)")
             print("  move robot: i(north),j(west),k(toward),l(east),m(south),o (away)")
+            print("  rotate robot: e(-rZ),r(+rZ),f(-rNorth),g(+rNorth)")
             print("  camera tilt down: t")
             print("  center QR: c")
+            print("  print QR code info: q")
             print("  Measure distance : M")
             print("  exit: ESC")
         if key == 113: #q
