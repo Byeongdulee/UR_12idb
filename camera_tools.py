@@ -99,18 +99,6 @@ class QRref:
         y = self.size/m
         return y 
        
-def measureheight(rob):
-    v0 = rob.get_xyz()
-    rob.robot.bump(z=-1, backoff=0.01)
-    v1 = rob.get_xyz()
-    v = v0-v1
-    rob.move2z(v[2])
-    #v1 = rob.get_xyz()
-    #v = v0-v1
-    #print(v0, v1)
-    distance = v[2]+0.01
-    return distance
-
 def align_heater(rob):
     rob.finger.gripper_activate()
     rob.set_orientation()
@@ -124,7 +112,7 @@ def align_heater(rob):
     rob.rotz(rob.camera.QRtiltangle)
     rob.grab()
     #pickupshift(rob)
-    height = measureheight(rob)
+    height = rob.measureheight(rob)
     print(f"Height was {height}")
     dist = height+0.02
     print(f"move z down by {dist}")
@@ -185,6 +173,16 @@ def motion_pictures(rob, Radius, height):
     v0 = rob.get_xyz().tolist()
     for i in range(0,18, 1):
         goto_phi(rob, v0, i*10, Radius, height)
+        time.sleep(6)
+        rob.capture_camera()
+    rob.moveto(v0)
+
+# rob.roll_around_camera(10, obj_distance+0.18)    
+def motion_pictures2(rob, radius=0.12):
+    v0 = rob.get_xyz().tolist()
+    rob.roll_around_camera((0-9)*3, radius)
+    for i in range(0, 18, 1):
+        rob.roll_around_camera(3, radius)    
         time.sleep(6)
         rob.capture_camera()
     rob.moveto(v0)
@@ -303,12 +301,11 @@ def followhands(rob):
     cv2.destroyAllWindows()
 
 
-def showcamera(rob):
-#    t = Thread(target=rob.camera.run, daemon=True)
-#    t.start()
-#    time.sleep(0.1)
+def showcamera(rob, obj_distance=0.12):
+    # obj_distance: distance between the gripper tip to the object. measure using rob.measureheight() function.
     rob.camera.QRdistance = ""
     flipflop = True
+    QRpos = []
     while 1:    
         # Capture
         ret, frame = rob.camera.capture()
@@ -332,16 +329,25 @@ def showcamera(rob):
         # Display 
         isambient = False
         QRcode = decodeQR(frame)
-        if len(QRcode) ==1:
-            for qrd in QRcode:
-                if qrd.data == b'sav':
-                    #print(qrd)
-                    isambient = True
-        try:
+        rob.camera.image = frame
+        data, rectcoord, qrsize, dist = rob.camera.decode()
+        if len(data) ==1:
+            if data == b'sav':
+                #print(qrd)
+                isambient = True
+        QRpos = rob.camera.QRposition
+        QRdist = rob.camera.QRdistance
+#        if len(rob.camera.QRposition)>0:
+#            QRpos = rob.camera.QRposition
+#            QRdist = rob.camera.QRdistance
+        if len(QRpos)>0:
+            cv2.putText(frame, "{}: [{:.2f}, {:.2f}]".format("position", QRpos[0],QRpos[1]), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+            try:
+                cv2.putText(frame, "{}: {:.2f}mm".format("distance", QRdist*1000), (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+            except:
+                pass
+        if hasattr(rob.camera, 'QRdata'):
             showQRcode(QRcode, frame)
-            cv2.putText(frame, "{}: {:.2f}mm".format("distance", rob.camera.QRdistance), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 3)
-        except:
-            pass
 
         cv2.imshow('frame', frame)
         rob.camera.decode2QR()
@@ -374,6 +380,14 @@ def showcamera(rob):
             rob.move_toward_camera(0, north=-0.025, east=0.0)
         if key == 111: #o
             rob.move_toward_camera(-0.025, north=0, east=0.0)
+        if key == 103: #g
+            rob.roll_around_camera(10, obj_distance+0.18)
+        if key == 102: #f
+            rob.roll_around_camera(-10, obj_distance+0.18)
+        if key == 114: #r
+            rob.rotate_around_Zaxis_camera(10)
+        if key == 101: #e
+            rob.rotate_around_Zaxis_camera(-10)
         if key == 97: #a
             rob.camera.vidcap.set(cv2.CAP_PROP_AUTOFOCUS,1)
         if key == 120: #x
@@ -398,6 +412,12 @@ def showcamera(rob):
             t.start()
         if key == 99: #c
             #rob.bring_QR_to_camera_center()
+            if len(QRpos)>0:
+                dx = w/2-QRpos[0]
+                dy = h/2-QRpos[1]
+                dX = -dx/rob.camera.camera_f*QRdist
+                dY = dy/rob.camera.camera_f*QRdist
+                rob.move_toward_camera(distance=0, north=dY, east=dX, acc=0.5, vel=0.5)
             if not isambient:
                 t = Thread(target=run_centering, args=(rob,))
             else:

@@ -3,13 +3,10 @@ from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox 
 from PyQt5 import uic
 #from roboUR3 import roboUR3
-from robDK import roboUR3
 from robUR3 import UR3
 import argparse
 
 import sys
-from robodk.robolink import TargetReachError
-import robodk.robomath as rkmath
 
 class tweakRobot(QMainWindow):
     def __init__(self, rob):
@@ -250,6 +247,9 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
     if sys.argv[1] == "roboDK":
+        from robDK import roboUR3
+        from robodk.robolink import TargetReachError
+        import robodk.robomath as rkmath
         rob = roboUR3()
     else:
         rob = UR3(sys.argv[1])

@@ -411,6 +411,20 @@ class UR3(QObject):
         #self.finger.open_gripper()
         self.finger.gripper_action(190)
 
+# special functions
+    def measureheight(self): # measure height by bumping along -z direction.
+        back_up = 0.01
+        v0 = self.get_xyz()
+        self.robot.bump(z=-1, backoff=back_up)
+        v1 = self.get_xyz()
+        v = v0[2]-(v1[2]-back_up)
+        self.mvz(v0[2])
+        #v1 = rob.get_xyz()
+        #v = v0-v1
+        #print(v0, v1)
+        #distance = v[2]+0.01
+        return v
+
 # Camera functions.
     def tweak_around_camera_axis(self, ang, acc=0.5, vel=0.5):
         # rolling up and down around the tool X axis.
@@ -478,19 +492,25 @@ class UR3(QObject):
     def tilt_over_back(self, distance=0, ang = 30):
         return self.tilt_over(distance=distance, ang = ang, dir=[-1, 0])
 
+    def camera2z(self):
+        self.robot.set_tcp(self.camtcp)
+        self.set_orientation()
+        self.robot.set_tcp(self.tcp)
 
     def tilt_camera_down(self):
-#       make camera face down regardless of the direction of camera.
-        trans = self.robot.get_pose()
-        v = trans.orient.get_vec_y()
-        # rotate in the TCP coordinate.
-        # in the TCP coordinate, camera is at 30 degree along y direction.
-        # therefore, rotating around x axis by 30 degree brings camera along Z.
-        trans.orient.rotate_xt(math.pi/180*30)
-        dist = self._TCP2CAMdistance*math.cos(math.pi/6)
-        trans.set_pos(trans.get_pos()-v*dist)
-        self.robot.set_pose(trans, 0.1, 0.1, wait=True)
-        return trans
+        self.camera2z()
+#     def tilt_camera_down(self):
+# #       make camera face down regardless of the direction of camera.
+#         trans = self.robot.get_pose()
+#         v = trans.orient.get_vec_y()
+#         # rotate in the TCP coordinate.
+#         # in the TCP coordinate, camera is at 30 degree along y direction.
+#         # therefore, rotating around x axis by 30 degree brings camera along Z.
+#         trans.orient.rotate_xt(math.pi/180*30)
+#         dist = self._TCP2CAMdistance*math.cos(math.pi/6)
+#         trans.set_pos(trans.get_pos()-v*dist)
+#         self.robot.set_pose(trans, 0.1, 0.1, wait=True)
+#         return trans
 
     def tilt_y(self):
         # have camera on +y axis and tilt down to face floor.
@@ -834,6 +854,19 @@ class UR3(QObject):
         np = m3d.Transform(v)
         #self.robot.movej(np, acc=acc, vel=vel)
         self.robot.set_pose(np, acc=acc, vel=vel, wait=True, command="movej", threshold=None)
+
+    def roll_around_camera(self, val, distance, dir='y'):
+        newtcp = []
+        for v in self.camtcp:
+            newtcp.append(v)
+        newtcp[2] = distance
+        self.robot.set_tcp(newtcp)
+        v = self.robot.get_orientation()
+        if dir=='y':
+            self.roty(val, coordinate='tcp', acc=0.5, vel=0.5)
+        else:
+            self.rotx(val, coordinate='tcp', acc=0.5, vel=0.5)
+        self.robot.set_tcp(self.tcp)
 
     def camera_y(self):
         trans = self.robot.get_pose()

@@ -7,10 +7,28 @@ import time
 from pyzbar import pyzbar
 import cv2
 import threading
-
+imgH = 1280
+imgV = 720
 focus_threshold = 510
+QRsavSize = 0.023 # 1QR 'sav' size = ~23mm (about 1mm error)
+# dx = dX/Z*f
+# dx: change in pixels on camera.
+# dX: change of the position of an object (or the robot arm carrying the camera) (m)
+# Z : the distance from camera to the object (m)
+# f : pixel/m ratio
+# f ~ 1620 # This is calculated from for imgH = 1280 and imgV = 720
+camera_f = 1620
+
 def variance_of_laplacian(image):
     return cv2.Laplacian(image, cv2.CV_64F).var()
+
+QRpos = [[[0, 0, 0], 
+    [0, 0.015/2, 0],
+    [0, 0.015, 0], 
+    [0.015/2, 0.015/2, 0],
+    [0.015, 0.015, 0],
+    [0.015/2, 0, 0],
+    [0.015, 0, 0]]] #position of QR codes
 
 def isblurry(image):
     size = image.shape
@@ -54,20 +72,25 @@ class camera(object):
                  IP="", device=0):
         self.IP = IP
         self.device = device
+        self.camera_f = camera_f
+        self.imgH = imgH
+        self.imgV = imgV
+        self.QR_physical_size = QRsavSize
         self._running = False
         if len(self.IP) == 0:
             vidcap = cv2.VideoCapture(self.device)
             if not vidcap.isOpened():
                 print("Cannot open camera {}".format(self.device))
                 exit()
-            vidcap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-            vidcap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            vidcap.set(cv2.CAP_PROP_FRAME_WIDTH, imgH)
+            vidcap.set(cv2.CAP_PROP_FRAME_HEIGHT, imgV)
             self.vidcap = vidcap
             self.focus(520)
     
     def scanfocus(self):
         for i in range(350,600,5):
-            if not isblurry(self.capture()):
+            ret, img = self.capture()
+            if not isblurry(img):
                 break
             self.focus(i)
             time.sleep(0.1)
@@ -111,18 +134,14 @@ class camera(object):
                 imageData = np.asarray(bytearray(resp), dtype="uint8")
                 pilImage=Image.open(io.BytesIO(imageData))
                 ret = True
-#                print("Successfully captured.")
         else:
             ret, pilImage = self.vidcap.read()
             if not ret:
                 print("Fail to capture camera.")
-            # else:
-            #     print("read successfuuly.")
         self.image = pilImage
         return ret, pilImage
 
-    def decode(self, p0in=(0,0), p1in=(0,0), imgwidth=866, imgheight=650, color = (0, 0, 255), thickness = 1):
-        #imgdata = self.image
+    def decode(self, p0in=(0,0), p1in=(0,0), imgwidth=imgH, imgheight=imgV, color = (0, 0, 255), thickness = 1):
         opencvimage = np.array(self.image)
         imgdata = opencvimage[:,:,::-1].copy()
         QRdata = decodeQR(imgdata)
@@ -171,6 +190,7 @@ class camera(object):
             break
             #print(f"Edge lengthes of QR are {dist}")
         self.QRtype = "1QR"
+        self.QRdistance = self.QR_physical_size/np.mean(dist)*self.camera_f
         self.image = Image.fromarray(imgdata)
         self.QRdata = data
         self.QRposition = rectcoord
@@ -179,7 +199,7 @@ class camera(object):
         self.QRcoordinates = pgpnts
         return data, rectcoord, qrsize, dist
 
-    def decode2QR(self, p0in=(0,0), p1in=(0,0), imgwidth=866, imgheight=650, color = (0, 0, 255), thickness = 1):
+    def decode2QR(self, p0in=(0,0), p1in=(0,0), imgwidth=imgH, imgheight=imgV, color = (0, 0, 255), thickness = 1):
         #imgdata = self.image
         opencvimage = np.array(self.image)
         imgdata = opencvimage[:,:,::-1].copy()
@@ -362,5 +382,173 @@ class camera(object):
 
     def save(self, filename = "capture"):
         if self.image is not None:
-            self.image.save(filename+".png")
+            try:
+                self.image.save(filename+".png")
+            except AttributeError: # if self.image is a numpy array.
+                img = Image.fromarray(self.image)
+                img.save(filename+".png")
             print("saved")
+
+    def loadimages(self, dir=""):
+        import glob
+        if len(dir)>0:
+            fnames = glob.glob(f"{dir}/*.png")
+        else:
+            fnames = glob.glob(f"*.png")
+        images = []
+        for fn in fnames:
+            print(f"{fn} is loaded.")
+            images.append(cv2.imread(fn))
+        return images
+
+    def calibrate(self, img = []): 
+        #calibrate RoboticQ small checkerboard
+        # most of the code here is from https://learnopencv.com/camera-calibration-using-opencv/
+
+        # Defining the dimensions of checkerboard
+        CHECKERBOARD = (6,7)
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+        # Creating vector to store vectors of 3D points for each checkerboard image
+        objpoints = []
+    	# Creating vector to store vectors of 2D points for each checkerboard image
+        imgpoints = []
+    	# Defining the world coordinates for 3D points
+        objp = np.zeros((1, CHECKERBOARD[0] * CHECKERBOARD[1], 3), np.float32)
+        objp[0,:,:2] = np.mgrid[0:CHECKERBOARD[0], 0:CHECKERBOARD[1]].T.reshape(-1, 2)
+        # 6 points in 35mm (0.035m)
+        objp = objp*0.035/6
+        #prev_img_shape = None
+        # Extracting path of individual image stored in a given directory
+        images = []
+        if len(img)==0:
+            print("Image will be captured")
+            v, img = self.capture()
+            images.append(img)
+        else:
+            if hasattr(img, 'shape'):
+                images.append(img)
+            else:
+                images = img
+        for img in images:
+            gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+                # Find the chess board corners
+                # If desired number of corners are found in the image then ret = true
+            ret, corners = cv2.findChessboardCorners(gray, CHECKERBOARD, cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_FAST_CHECK + cv2.CALIB_CB_NORMALIZE_IMAGE)
+            """
+            If desired number of corner are detected,
+            we refine the pixel coordinates and display
+            them on the images of checker board
+            """
+            if ret == True:
+                objpoints.append(objp)
+                # refining pixel coordinates for given 2d points.
+                corners2 = cv2.cornerSubPix(gray, corners, (11,11),(-1,-1), criteria)
+                imgpoints.append(corners2)
+                ## Draw and display the corners
+                #img = cv2.drawChessboardCorners(img, CHECKERBOARD, corners2, ret)
+            #cv2.imshow('img',img)
+            #cv2.waitKey(0)
+        #cv2.destroyAllWindows()
+        """
+            Performing camera calibration by
+            passing the value of known 3D points (objpoints)
+            and corresponding pixel coordinates of the
+            detected corners (imgpoints)
+        """
+#        print(imgpoints)
+        if len(imgpoints) > 0:
+            ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
+#            print("Camera matrix : \n")
+#            print(mtx)
+            # https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
+#            print("distortion coefficients : \n")
+#            print(dist)
+            # Rotation specified as a 3×1 vector. 
+            # The direction of the vector specifies the axis of rotation and 
+            # the magnitude of the vector specifies the angle of rotation. 
+#            print("rvecs : \n")
+#            print(rvecs)
+            # for rv in rvecs:
+            #     ang = np.linalg.norm(rv)
+            #     rv = rv/ang
+            #     print("rotation axis : \n")
+            #     print(rv)
+            #     print(f"rotation angle (radian) : {ang}\n")
+#            print("tvecs : \n")
+#            print(tvecs)
+            self.intrinsic_mtx = mtx
+            self.distCoeffs = dist
+            self.objpoints = objpoints
+            self.imgpoints = imgpoints
+            return rvecs, tvecs
+        else:
+            print("Cannot find corners. Calibration failed.")
+    
+    # def getRTmatix(self, objpoints=[], imgpoints=[], szimage=(imgH, imgV)):
+    #     if len(imgpoints) == 0:
+    #         points = [[300, 300], 
+    #             [300, 350], 
+    #             [300, 400], 
+    #             [350,350], 
+    #             [400,400], 
+    #             [350,300], 
+    #             [400,300]]
+    #         imgpoints.append(np.array([points], np.float32))
+    #     if len(objpoints) == 0:
+    #         objpoints.append(np.array(QRpos, np.float32))
+#         mtx = self.intrinsic_mtx.copy()
+#         dist = self.distCoeffs.copy()
+# #        print(mtx)
+#         ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, szimage, mtx, dist)
+#         print(mtx)
+#         print(ret)
+#         print(self.intrinsic_mtx)
+#         R = cv2.Rodrigues(rvecs[0])
+#         return rvecs[0], tvecs[0], mtx, R
+    def getRTmatix(self, points, szimage=(imgH, imgV)):
+        # Needs to be improved....
+        imgp = np.array(points, np.float32)
+        imgp = np.append(imgp, np.ones([len(imgp), 1]), 1)
+        QR = np.array(QRpos[0], np.float32)
+        QR = np.append(QR, np.ones([len(QR), 1]), 1)
+        x_bar = np.mean(QR, axis=0)
+        p = np.linalg.inv(self.intrinsic_mtx)@imgp.T
+        p = p.T
+        y_bar = np.mean(p, axis=0)
+        A = QR-x_bar
+        B = p-y_bar
+        C = B.T @ A
+        C = C.T
+        for i in range(2):
+            C[i] = C[i]/np.sqrt(np.sum(C[i]**2))
+        C[2] = np.cross(C[0], C[1])
+        R = C.T
+        T = y_bar.T - R @ x_bar.T
+        R = np.delete(R, np.s_[-1:], axis=1)
+        return R, T.T
+
+    def QRcoordinates2imgpoints(self):
+        if not hasattr(self, 'QRcoordinates'):
+            return
+        p = self.QRcoordinates
+        points = [p[0], 
+                [(p[0][0]+p[1][0])/2, (p[0][1]+p[1][1])/2], 
+                p[1], 
+                [(p[1][0]+p[2][0])/2, (p[1][1]+p[2][1])/2], 
+                p[2], 
+                [(p[2][0]+p[3][0])/2, (p[2][1]+p[3][1])/2], 
+                p[3]]
+        imgpoints = []
+        imgpoints.append(np.array(points, np.float32))
+        return imgpoints
+    
+    def getQRorient(self):
+        if not hasattr(self, 'QRcoordinates'):
+            self.capture()
+            self.decode()
+        if not hasattr(self, 'QRcoordinates'):
+            self.capture()
+            self.decode()
+        imgp = self.QRcoordinates2imgpoints()
+        rv, tv, mtx, R = self.getRTmatix(imgpoints=imgp)
+        return rv, tv, mtx, R
