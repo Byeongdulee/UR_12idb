@@ -4,13 +4,29 @@ from PIL import Image
 import io
 import math
 import time
-from pyzbar import pyzbar
 import cv2
+import math3d as m3d
 import threading
+from scipy.spatial.transform import Rotation
+ISQR = True
+ISAPRILTAGS = True
+try:
+    from pyzbar import pyzbar
+except ImportError:
+    ISQR = False
+
+try:
+    from pupil_apriltags import Detector
+    from pupil_apriltags.bindings import Detection
+except ImportError:
+    ISAPRILTAGS = False
+
+
 imgH = 1280
 imgV = 720
 focus_threshold = 510
 QRsavSize = 0.023 # 1QR 'sav' size = ~23mm (about 1mm error)
+AT_size = 0.021
 # dx = dX/Z*f
 # dx: change in pixels on camera.
 # dX: change of the position of an object (or the robot arm carrying the camera) (m)
@@ -43,6 +59,22 @@ def isblurry(image):
         val = True
     return val
 
+def cal_AT2pose(r):
+    if not isinstance(r, Detection):
+        print("The input is not aprilTag object.")
+        return []
+    # aprilTag's rotation matrix is to convert the world coordinate to camera coordinate.
+    #r.pose_R[:,[0,2]]=r.pose_R[:,[2,0]]
+    p = m3d.Transform()
+    r2 = Rotation.from_matrix(r.pose_R)
+    euler = r2.as_euler('xyz', degrees = True)
+    R = Rotation.from_euler('zyx', [euler[2], -euler[1], -euler[0]], degrees=True)
+    print(f"Euler angles : {euler} degrees")
+    p.orient = m3d.Orientation(R.as_matrix())
+    #p.pos =np.array([r.pose_t[0][0],r.pose_t[1][0],0])
+    return euler, r.pose_t, p
+    #return euler, r.pose_t
+
 __author__ = "Byeongdu Lee, <blee@anl.gov>, Argonne National Laboratory"
 __license__ = "LGPLv3"
 
@@ -54,6 +86,28 @@ __license__ = "LGPLv3"
 # 510, 0.29
 # 543, 0.19
 # 587, 0.14
+at = Detector(families='tag36h11',
+                       nthreads=1,
+                       quad_decimate=1.0,
+                       quad_sigma=0.0,
+                       refine_edges=1,
+                       decode_sharpening=0.25,
+                       debug=0)
+
+def decodeAT(img=[], F=[]):
+    if len(img)==0:
+        print("empty image")
+        return
+    if len(F)==0:    
+        F = [[camera_f, 0, imgH/2], [0, camera_f, imgV/2], [0, 0, 1]]
+    fx = F[0][0]
+    fy = F[1][1]
+    cx = F[0][2]
+    cy = F[1][2]
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    r = at.detect(gray, estimate_tag_pose=True, camera_params=[fx, fy, cx, cy], tag_size=AT_size)
+    return r
+
 def decodeQR(img):
     img2 = img
     QRdata = pyzbar.decode(img2)
@@ -76,6 +130,8 @@ class camera(object):
         self.imgH = imgH
         self.imgV = imgV
         self.QR_physical_size = QRsavSize
+        self.AT_physical_size = AT_size
+        self.intrinsic_mtx = []
         self._running = False
         if len(self.IP) == 0:
             vidcap = cv2.VideoCapture(self.device)
@@ -140,6 +196,64 @@ class camera(object):
                 print("Fail to capture camera.")
         self.image = pilImage
         return ret, pilImage
+
+    def decodeAT(self):
+        r = decodeAT(self.image, self.intrinsic_mtx)
+        if type(self.intrinsic_mtx) is not np.ndarray:
+            if len(self.intrinsic_mtx)==0:
+                K = np.array([[camera_f, 0, imgH/2], [0, camera_f, imgV/2], [0, 0, 1]])
+            else:
+                K = np.array(self.intrinsic_mtx)
+        else:
+            K = self.intrinsic_mtx
+        self.referenceName = "AT"
+        if len(r)==1:
+            r = r[0]
+            pos = np.linalg.inv(K@r.homography*r.pose_t[2])@np.array([r.center[0], r.center[1], 1])
+#            print(r.pose_t.transpose())
+#            print(r.homography)
+#            print(pos)
+        else:
+            r = None
+            pos = None
+        self.decoded = r
+        return r
+  
+    def getATdistance(self, r):
+        pgpnts = r.corners
+        dist = []
+        for k in range(4):
+            ind1 = k%4
+            ind2 = (k+1)%4
+            x0 = pgpnts[ind1][0]
+            y0 = pgpnts[ind1][1]
+            x1 = pgpnts[ind2][0]
+            y1 = pgpnts[ind2][1]
+            d = math.sqrt((x0-x1)**2+(y0-y1)**2)
+            dist.append(d)
+        self.QRdistance = self.AT_physical_size/np.mean(dist)*self.camera_f
+        self.QRposition = r.center
+        self.QRsize = self.AT_physical_size
+        return self.QRdistance
+
+    def H2RT(self, H):
+        # https://medium.com/analytics-vidhya/using-homography-for-pose-estimation-in-opencv-a7215f260fdd
+        if len(self.intrinsic_mtx)==0:
+            self.intrinsic_mtx = [[camera_f, 0, imgH/2], [0, camera_f, imgV/2], [0, 0, 1]]
+        K = self.intrinsic_mtx
+        H = H.T
+        h1 = H[0]
+        h2 = H[1]
+        h3 = H[2]
+        K_inv = np.linalg.inv(K)
+        L = 1 / np.linalg.norm(np.dot(K_inv, h1))
+        r1 = L * np.dot(K_inv, h1)
+        r2 = L * np.dot(K_inv, h2)
+        r3 = np.cross(r1, r2)
+        T = L * (K_inv @ h3.reshape(3, 1))
+        R = np.array([[r1], [r2], [r3]])
+        R = np.reshape(R, (3, 3))
+        return R, T
 
     def decode(self, p0in=(0,0), p1in=(0,0), imgwidth=imgH, imgheight=imgV, color = (0, 0, 255), thickness = 1):
         opencvimage = np.array(self.image)
@@ -483,72 +597,20 @@ class camera(object):
             return rvecs, tvecs
         else:
             print("Cannot find corners. Calibration failed.")
-    
-    # def getRTmatix(self, objpoints=[], imgpoints=[], szimage=(imgH, imgV)):
-    #     if len(imgpoints) == 0:
-    #         points = [[300, 300], 
-    #             [300, 350], 
-    #             [300, 400], 
-    #             [350,350], 
-    #             [400,400], 
-    #             [350,300], 
-    #             [400,300]]
-    #         imgpoints.append(np.array([points], np.float32))
-    #     if len(objpoints) == 0:
-    #         objpoints.append(np.array(QRpos, np.float32))
-#         mtx = self.intrinsic_mtx.copy()
-#         dist = self.distCoeffs.copy()
-# #        print(mtx)
-#         ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, szimage, mtx, dist)
-#         print(mtx)
-#         print(ret)
-#         print(self.intrinsic_mtx)
-#         R = cv2.Rodrigues(rvecs[0])
-#         return rvecs[0], tvecs[0], mtx, R
-    def getRTmatix(self, points, szimage=(imgH, imgV)):
-        # Needs to be improved....
-        imgp = np.array(points, np.float32)
-        imgp = np.append(imgp, np.ones([len(imgp), 1]), 1)
-        QR = np.array(QRpos[0], np.float32)
-        QR = np.append(QR, np.ones([len(QR), 1]), 1)
-        x_bar = np.mean(QR, axis=0)
-        p = np.linalg.inv(self.intrinsic_mtx)@imgp.T
-        p = p.T
-        y_bar = np.mean(p, axis=0)
-        A = QR-x_bar
-        B = p-y_bar
-        C = B.T @ A
-        C = C.T
-        for i in range(2):
-            C[i] = C[i]/np.sqrt(np.sum(C[i]**2))
-        C[2] = np.cross(C[0], C[1])
-        R = C.T
-        T = y_bar.T - R @ x_bar.T
-        R = np.delete(R, np.s_[-1:], axis=1)
-        return R, T.T
 
-    def QRcoordinates2imgpoints(self):
-        if not hasattr(self, 'QRcoordinates'):
-            return
-        p = self.QRcoordinates
-        points = [p[0], 
-                [(p[0][0]+p[1][0])/2, (p[0][1]+p[1][1])/2], 
-                p[1], 
-                [(p[1][0]+p[2][0])/2, (p[1][1]+p[2][1])/2], 
-                p[2], 
-                [(p[2][0]+p[3][0])/2, (p[2][1]+p[3][1])/2], 
-                p[3]]
-        imgpoints = []
-        imgpoints.append(np.array(points, np.float32))
-        return imgpoints
-    
-    def getQRorient(self):
-        if not hasattr(self, 'QRcoordinates'):
-            self.capture()
-            self.decode()
-        if not hasattr(self, 'QRcoordinates'):
-            self.capture()
-            self.decode()
-        imgp = self.QRcoordinates2imgpoints()
-        rv, tv, mtx, R = self.getRTmatix(imgpoints=imgp)
-        return rv, tv, mtx, R
+    def show(self):
+        # press ESC to stop.
+        ret, img = self.capture()
+        while 1:    
+        # Capture
+            ret, img = self.capture()
+            if not ret:
+                print("Retrieve frame failed...")
+                break
+            cv2.imshow('frame', img)
+            #rob.camera.decode2QR()
+            key = cv2.waitKey(20) & 0xFF
+            if key == 27:
+                break
+            time.sleep(0.02)
+        cv2.destroyAllWindows()

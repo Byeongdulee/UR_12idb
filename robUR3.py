@@ -19,8 +19,11 @@ from robot import Robotiq_Two_Finger_Gripper
 from robot import Robot
 from urdashboard import dashboard
 from urcamera import camera
+from urcamera import Detection as atDET
+from urcamera import cal_AT2pose
 import camera_tools as ctool
 import robot
+import json
 #from urrobot import URRobot
 
 #### Standard orientations.
@@ -75,11 +78,20 @@ class UR3(QObject):
         if '.' in name:
             IP = name
         else:
-            if name == 'UR3':
-                IP="164.54.122.96"
-            if name == 'UR5':
-                IP = 'UR5-12IDC.xray.aps.anl.gov'
+            try:
+                #with open('../RobotList/list_of_robots.json') as json_file:
+                with open('RobotList/list_of_robots.json') as json_file:
+                    IPlist = json.load(json_file)
+                IP = IPlist[name]
+            except FileNotFoundError:
+                print("Please provide the IP number of your robot control box.")
+                return
+            except KeyError:
+                print(f"{name} does not exist in ../RobotList/list_of_robots.json")
+                return
+
         self.logger = logging.getLogger(name)
+
         try:
 #            self.robot = urx.Robot(IP)
             self.robot = Robot(IP)
@@ -98,7 +110,7 @@ class UR3(QObject):
             self.finger = None
         #self.__TCP2CAMdistance = 0.15
         self.robot.IP = IP
-        self.robot.set_tcp(self.tcp)
+        self.set_tcp(self.tcp)
         self.robot.set_payload(1.35, (-0.003,0.01,0.037))
         self.dashboard = dashboard(self.robot)
         if self.robot.secmon.is_protective_stopped():
@@ -124,6 +136,9 @@ class UR3(QObject):
 
     def is_running(self):
         return self.robot.is_program_running()
+
+    def set_tcp(self, tcp):
+        self.robot.set_tcp(tcp)
 
 # check positions and orientations
 
@@ -272,15 +287,15 @@ class UR3(QObject):
         self.robot.translate([0, 0, z], acc=acc, vel=vel, wait=wait)
     
 # Relative motion in the TCP coordinate.
-    def move2xTCP(self, x=0.05, acc=0.01, vel=0.01, wait=True):
+    def move2xTCP(self, x=0.05, acc=0.5, vel=0.5, wait=True):
         # relative motion along x based on TCP coordinate.
         self.robot.translate_tool([x, 0, 0], acc=acc, vel=vel, wait=wait)
 
-    def move2yTCP(self, y=0.05, acc=0.01, vel=0.01, wait=True):
+    def move2yTCP(self, y=0.05, acc=0.5, vel=0.5, wait=True):
         # relative motion along y based on TCP coordinate.
         self.robot.translate_tool([0, y, 0], acc=acc, vel=vel, wait=wait)
 
-    def move2zTCP(self, z=0.05, acc=0.01, vel=0.01, wait=True):
+    def move2zTCP(self, z=0.05, acc=0.5, vel=0.5, wait=True):
         # relative motion along z based on TCP coordinate.
         self.robot.translate_tool([0, 0, z], acc=acc, vel=vel, wait=wait)
 
@@ -289,47 +304,61 @@ class UR3(QObject):
 # tcp : the sample coordinate
 # tool : the reference coordinate of which base is at the robot base
 # camera: the sample coordinate base on the camera.
-    def rotx(self, val, coordinate='tcp', acc=0.1, vel=0.1):
+    def rotx(self, val, coordinate='tcp', wait=True, acc=0.1, vel=0.3):
         # rotate around X axis by val in degree
         val = val/180*math.pi
         if coordinate == 'tcp':
             t = self.robot.get_pose()
             t.orient.rotate_xt(val)
-            return self.robot.set_pose(t, wait=True, acc=acc, vel=vel)
+            return self.robot.set_pose(t, wait=wait, acc=acc, vel=vel)
         if coordinate == 'base':
             t = m3d.Transform()
             t.orient.rotate_xt(val)
-            return self.robot.add_pose_base(t, wait=True, acc=acc, vel=vel)
+            return self.robot.add_pose_base(t, wait=wait, acc=acc, vel=vel)
+        if coordinate == 'camera':
+            self.set_tcp(self.camtcp)
+            t = self.robot.get_pose()
+            t.orient.rotate_xt(val)
+            m = self.robot.set_pose(t, wait=wait, acc=acc, vel=vel)
+            self.set_tcp(self.tcp)
+            return m
 
-    def roty(self, val, coordinate='tcp', acc=0.1, vel=0.1):
+    def roty(self, val, coordinate='tcp', wait=True, acc=0.1, vel=0.3):
         # rotate around Y axis by val in degree
         val = val/180*math.pi
         if coordinate == 'tcp':
             t = self.robot.get_pose()
             t.orient.rotate_yt(val)
-            return self.robot.set_pose(t, wait=True, acc=acc, vel=vel)
+            return self.robot.set_pose(t, wait=wait, acc=acc, vel=vel)
         if coordinate == 'base':
             t = m3d.Transform()
             t.orient.rotate_yt(val)
-            return self.robot.add_pose_base(t, wait=True, acc=acc, vel=vel)
+            return self.robot.add_pose_base(t, wait=wait, acc=acc, vel=vel)
+        if coordinate == 'camera':
+            self.set_tcp(self.camtcp)
+            t = self.robot.get_pose()
+            t.orient.rotate_yt(val)
+            m = self.robot.set_pose(t, wait=wait, acc=acc, vel=vel)
+            self.set_tcp(self.tcp)
+            return m
 
-    def rotz(self, val, coordinate='tcp', acc=0.1, vel=0.1):
+    def rotz(self, val, coordinate='tcp', wait=True, acc=0.1, vel=0.3):
         # rotate around Z by val in degree
         val = val/180*math.pi
         if coordinate == 'tcp':
             t = self.robot.get_pose()
             t.orient.rotate_zt(val)
-            return self.robot.set_pose(t, wait=True, acc=acc, vel=vel)
+            return self.robot.set_pose(t, wait=wait, acc=acc, vel=vel)
         if coordinate == 'base':
             t = m3d.Transform()
             t.orient.rotate_zt(val)
-            return self.robot.add_pose_base(t, wait=True, acc=acc, vel=vel)
+            return self.robot.add_pose_base(t, wait=wait, acc=acc, vel=vel)
         if coordinate == 'camera':
-            self.robot.set_tcp(self.camtcp)
+            self.set_tcp(self.camtcp)
             t = self.robot.get_pose()
             t.orient.rotate_zt(val)
-            m = self.robot.set_pose(t, wait=True, acc=acc, vel=vel)
-            self.robot.set_tcp(self.tcp)
+            m = self.robot.set_pose(t, wait=wait, acc=acc, vel=vel)
+            self.set_tcp(self.tcp)
             return m
 
     def rotj(self, *ang):
@@ -343,7 +372,23 @@ class UR3(QObject):
             j[i] = j[i] + myang[i]
         self.robot.movej(j)
 
-    def rotate(self, rotpos, rotaxis, rot_angles, acc=0.5, vel=0.5):
+    def rotate(self, rotaxis, rot_angles, wait=True, acc=0.5, vel=0.5):
+        # rotate around an axis by a relative amount.
+        # rotpos : center of rotation
+        # rotaxis : rotation axis
+        # rot_angles: rotation angle in degree
+        t = self.robot.get_pose()
+        #rotaxis = -came*dir[0] + camn*dir[1]
+        t.orient.rotate_t(rotaxis, math.pi/180*rot_angles)
+        # if type(rotpos) == m3d.transform.Transform:
+        #     t.set_pos(rotpos.get_pos())
+        # else:
+        #     t.set_pos(rotpos)
+        # #v = self.robot.get_pose()
+        # #v = v*t # rotate around tool z
+        m = self.robot.set_pose(t, acc=acc, vel=vel, wait=wait, command='movej', threshold=None)
+
+    def rotate_ref(self, rotpos, rotaxis, rot_angles, acc=0.5, vel=0.5):
         # rotate around a given TCP position around an axis by a relative amount.
         # rotpos : center of rotation
         # rotaxis : rotation axis
@@ -436,9 +481,9 @@ class UR3(QObject):
             self.tweak_reference_axis_angle = rotang
         if ang ==0:
             return
-        self.robot.set_tcp(self.camtcp)
+        self.set_tcp(self.camtcp)
         self.rotz(ang)
-        self.robot.set_tcp(self.tcp)
+        self.set_tcp(self.tcp)
         vv = self.robot.get_orientation()
         t = vv.get_vec_y()
         l = math.sqrt(t[0]**2+t[1]**2)
@@ -473,29 +518,29 @@ class UR3(QObject):
         #yv = self.get_camera_vector()
         camv, camn, came = self.get_camera_vector()
         CAMVECTOR_ToolCoordinate = [0, math.sin(math.pi/6), math.cos(math.pi/6)]
-        self.robot.set_tcp(self.tcp)
+        self.set_tcp(self.tcp)
         #xv = self.robot.get_orientation().get_vec_x()
         #zv = [0, -1, 0]
         rotcenter = self.camtcp.copy()
         for i in range(0, 3):
             rotcenter[i] = rotcenter[i]+distance*CAMVECTOR_ToolCoordinate[i]
-        self.robot.set_tcp(rotcenter)
+        self.set_tcp(rotcenter)
         t = self.robot.get_pose()
         rotaxis = -came*dir[0] + camn*dir[1]
         t.orient.rotate_b(rotaxis, math.pi/180*ang)
         #v = self.robot.get_pose()
         #v = v*t # rotate around tool z
         m = self.robot.set_pose(t, acc=acc, vel=vel, wait=True, command='movej', threshold=None)
-        self.robot.set_tcp(self.tcp)
+        self.set_tcp(self.tcp)
         return m
 
     def tilt_over_back(self, distance=0, ang = 30):
         return self.tilt_over(distance=distance, ang = ang, dir=[-1, 0])
 
     def camera2z(self):
-        self.robot.set_tcp(self.camtcp)
+        self.set_tcp(self.camtcp)
         self.set_orientation()
-        self.robot.set_tcp(self.tcp)
+        self.set_tcp(self.tcp)
 
     def tilt_camera_down(self):
         self.camera2z()
@@ -524,6 +569,7 @@ class UR3(QObject):
         yv = self.robot.get_orientation().get_vec_y()
         #v.orient.rotate_xb(val)
         v.pos[1] += -self._TCP2CAMdistance*math.cos(math.pi/6)
+        v.pos[2] -= self._TCP2CAMdistance*math.sin(math.pi/6)
         m = self.robot.set_pose(v, acc=1, vel=0.5, wait=True, command='movel', threshold=None)
 
         #if yv[1]<0: # need to rotate camera_back
@@ -548,6 +594,7 @@ class UR3(QObject):
         # val = val/180*math.pi
         # v.orient.rotate_xb(val)
         v.pos[1] += self._TCP2CAMdistance*math.cos(math.pi/6)
+        v.pos[2] -= self._TCP2CAMdistance*math.sin(math.pi/6)
         #return self.robot.set_pose(v, acc=0.5, vel=0.5, wait=True, command='movel', threshold=None)
         m = self.robot.set_pose(v, acc=0.5, vel=0.5, wait=True, command='movel', threshold=None)
         # if yv[1]>0 and abs(yv[2])<0.001: # need to rotate camera_back
@@ -566,6 +613,7 @@ class UR3(QObject):
         v.orient = orient
 
         v.pos[0] += self._TCP2CAMdistance*math.cos(math.pi/6)
+        v.pos[2] -= self._TCP2CAMdistance*math.sin(math.pi/6)
         return self.robot.set_pose(v, acc=0.5, vel=0.5, wait=True, command='movel', threshold=None)
 
     def tilt_x(self):
@@ -577,6 +625,7 @@ class UR3(QObject):
         orient.rotate_xt(val)
         v.orient = orient
         v.pos[0] += -self._TCP2CAMdistance*math.cos(math.pi/6)
+        v.pos[2] -= self._TCP2CAMdistance*math.sin(math.pi/6)
         return self.robot.set_pose(v, acc=0.5, vel=0.5, wait=True, command='movel', threshold=None)
 
     def tilt_back(self):
@@ -592,6 +641,8 @@ class UR3(QObject):
         #self.robot.add_pose_tool(t, acc=0.5, vel=0.5, wait=True, threshold=None)
         #t = m3d.Transform()
         vect = v*self._TCP2CAMdistance*math.cos(val)
+        v = t.orient.get_vec_z()
+        vect = vect-v*self._TCP2CAMdistance*math.sin(val)
 #        vect = [0, self._TCP2CAMdistance, -self._TCP2CAMdistance*math.sin(val)]
         if not isinstance(vect, m3d.Vector):
             vect = m3d.Vector(vect)
@@ -603,7 +654,6 @@ class UR3(QObject):
         # qrcode sav 
         # size; 22.5mm
         # at 250mm away, 120 pixels.
-        qrsize = 22.5
         timeouttime = 1
         if not self.camera._running:
             self.camera.capture()
@@ -660,6 +710,11 @@ class UR3(QObject):
             self.camera.capture()
         if referenceName == "2QR":
             self.camera.decode2QR()
+        elif referenceName == "AT":
+            try:
+                r = self.camera.decodeAT()
+            except:
+                r = self.camera.decoded
         else:
             self.camera.decode()
         isDistanceIn = False
@@ -683,6 +738,11 @@ class UR3(QObject):
             self.camera.capture()
         if referenceName == "2QR":
             self.camera.decode2QR()
+        elif referenceName == "AT":
+            try:
+                r = self.camera.decodeAT()
+            except:
+                r = self.camera.decoded
         else:
             self.camera.decode()
         if hasattr(self.camera, 'QRtiltangle'):
@@ -817,9 +877,9 @@ class UR3(QObject):
         self.moveto(v, acc=acc, vel=vel)
 
     def get_camera_position(self):
-        self.robot.set_tcp(self.camtcp)
+        self.set_tcp(self.camtcp)
         t = self.robot.get_pose()
-        self.robot.set_tcp(self.tcp)
+        self.set_tcp(self.tcp)
         return t
 
     def get_camera_vector(self):
@@ -860,13 +920,13 @@ class UR3(QObject):
         for v in self.camtcp:
             newtcp.append(v)
         newtcp[2] = distance
-        self.robot.set_tcp(newtcp)
+        self.set_tcp(newtcp)
         v = self.robot.get_orientation()
         if dir=='y':
             self.roty(val, coordinate='tcp', acc=0.5, vel=0.5)
         else:
             self.rotx(val, coordinate='tcp', acc=0.5, vel=0.5)
-        self.robot.set_tcp(self.tcp)
+        self.set_tcp(self.tcp)
 
     def camera_y(self):
         trans = self.robot.get_pose()
@@ -945,9 +1005,9 @@ class UR3(QObject):
 
     def rotate_around_Zaxis_camera(self, ang):
         # rotate around the camera axis, degree input.
-        self.robot.set_tcp(self.camtcp)
+        self.set_tcp(self.camtcp)
         self.rotz(ang)
-        self.robot.set_tcp(self.tcp)
+        self.set_tcp(self.tcp)
 
     def get_inplane_angle_from_idealZ(self):
         t = self.robot.get_pose()
@@ -956,15 +1016,62 @@ class UR3(QObject):
         return ang
 
     def put_tcp2camera(self):
-        self.robot.set_tcp(self.camtcp)
+        self.set_tcp(self.camtcp)
         pos = self.robot.get_pos()
-        self.robot.set_tcp(self.tcp)
+        self.set_tcp(self.tcp)
         self.tilt_back()
         self.robot.set_pos(pos, acc=0.1, vel=0.1)
 
     def put_camera2tcp(self):
         pos = self.robot.get_pos()
         self.tilt_camera_down()
-        self.robot.set_tcp(self.camtcp)
+        self.set_tcp(self.camtcp)
         self.robot.set_pos(pos, acc=0.1, vel=0.1)
-        self.robot.set_tcp(self.tcp)
+        self.set_tcp(self.tcp)
+    
+    def orient2aprilTag(self):
+        if not hasattr(self.camera, 'decoded'):
+            return False
+        r = self.camera.decoded
+        if not isinstance(r, atDET):
+            print("No aprilTag in the camera. Capture it and try again.")
+            return
+        euler, t, pos = cal_AT2pose(r)
+#        self.set_tcp(self.camtcp)
+        # #t = self.robot.get_pose()
+        # p.orient = m3d.Orientation(R.orient.matrix.tolist())
+#        self.move2xTCP(-t[0])
+#        self.move2yTCP(-t[1])
+
+
+        self.move_toward_camera(distance=0, north=-t[1][0], east=t[0][0], acc=0.1, vel=0.2)
+
+        p = self.robot.get_pose()
+        self.prev_pose = p.copy()
+        self.prev_tcp = self.robot.get_tcp()
+
+        p.orient.rotate_zt(euler[2]/180*math.pi)
+        p.orient.rotate_yt(-euler[1]/180*math.pi)
+        p.orient.rotate_xt(-euler[0]/180*math.pi)
+        #print(p)
+        self.robot.set_pose(p, wait=True, acc=0.1, vel=0.2, command="movej")
+
+
+# #        self.move2xTCP(-t[0])
+# #        self.move2yTCP(-t[1])
+#         self.set_tcp(self.tcp)
+        return euler, t, p
+
+    def center_aprilTag(self):
+        if not hasattr(self.camera, 'decoded'):
+            return False
+        r = self.camera.decoded
+        if not isinstance(r, atDET):
+            print("No aprilTag in the camera. Capture it and try again.")
+            return
+        euler, t, pos = cal_AT2pose(r)
+        dx = self.camera.imgH/2-r.center[0]
+        dy = self.camera.imgV/2-r.center[1]
+        dX = -dx/self.camera.camera_f*t[2].tolist()[0]
+        dY = dy/self.camera.camera_f*t[2].tolist()[0]
+        self.move_toward_camera(distance=0, north=dY, east=dX, acc=0.5, vel=0.5)

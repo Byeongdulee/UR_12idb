@@ -50,6 +50,7 @@ class roboUR3(QObject):
     sigMoving = pyqtSignal(bool)
 
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
+    camtcp = [0.0,0.04,0.015,0.0,0.0,0.0]
 
     def __init__(self):
         super(roboUR3, self).__init__()
@@ -62,6 +63,10 @@ class roboUR3(QObject):
         #self.finger.gripper_activate()
         self.name = "roboUR3"
     
+    def set_tcp(self, tcp):
+        tcp = rkmath.UR_2_Pose(tcp)
+        self.robot.setPoseTool(tcp)
+
     def terminate(self):
         pass
     
@@ -369,18 +374,36 @@ class roboUR3(QObject):
         self.robot.MoveJ(rkmath.UR_2_Pose(ur))
 
     # relatve rotation
-    def rotx(self, val):
-        # val in degree
-        self.rotate('x', val)
+    def rotx(self, val, coordinate='tcp'):
+        if coordinate == 'tcp':
+            self.rotate('x', val)
+        if coordinate == 'base':
+            self.rotate('x', val, frame='base')
+        if coordinate == 'camera':
+            self.set_tcp(self.camtcp)
+            self.rotate('x', val)
+            self.set_tcp(self.tcp)
 
-    def roty(self, val):
-        # val in degree
-        self.rotate('y', val)
+    def roty(self, val, coordinate='tcp'):
+        if coordinate == 'tcp':
+            self.rotate('y', val)
+        if coordinate == 'base':
+            self.rotate('y', val, frame='base')
+        if coordinate == 'camera':
+            self.set_tcp(self.camtcp)
+            self.rotate('y', val)
+            self.set_tcp(self.tcp)
 
-    def rotz(self, val):
-        # val in degree
-        self.rotate('z', val)
-    
+    def rotz(self, val, coordinate='tcp'):
+        if coordinate == 'tcp':
+            self.rotate('z', val)
+        if coordinate == 'base':
+            self.rotate('z', val, frame='base')
+        if coordinate == 'camera':
+            self.set_tcp(self.camtcp)
+            self.rotate('z', val)
+            self.set_tcp(self.tcp)
+
     def rotj(self, *ang):
         # rotate joints by relative angle in degree
         myang = [0, 0, 0, 0, 0, 0]
