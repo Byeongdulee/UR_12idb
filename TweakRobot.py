@@ -120,6 +120,7 @@ class tweakRobot(QMainWindow):
         self.ui.Send.clicked.connect(self.send_coords)
         self.ui.Camera.toggled.connect(lambda:self.btnstate(self.ui.Camera))
         self.ui.TCP.toggled.connect(lambda:self.btnstate(self.ui.TCP))
+        self.ui.actionUnlock.triggered.connect(self.unlock)
         self.ui.actionEstimate_Dtag.triggered.connect(self.estimateDtag)
         self.ui.actionSet_Dtag_as_Camera_TCP.triggered.connect(self.setDtagAsTCP)
         self.ui.actionCenter_AprilTag.triggered.connect(self.centerAT)
@@ -139,6 +140,9 @@ class tweakRobot(QMainWindow):
         self.ui.show()
         self.threadpool = QThreadPool()
 
+    def unlock(self):
+        self.rob.unlock_stop()
+
     def goback(self):
         if hasattr(self.rob, 'prev_pose'):
             t = self.rob.robot.get_tcp()
@@ -149,10 +153,10 @@ class tweakRobot(QMainWindow):
             print("There was no prev_pose, yet. This only works with AprilTag.")
     
     def putCM2TCP(self):
-        self.threadrun(self.rob.put_camera2tcp)
+        self.threadrun(self.rob.camera2fingertip)
     
     def putTCP2CM(self):
-        self.threadrun(self.rob.put_tcp2camera)
+        self.threadrun(self.rob.fingertip2camera)
     
     def measureheight(self):
         # Pass the function to execute
@@ -309,6 +313,12 @@ class tweakRobot(QMainWindow):
     def goxm(self):
         try:    
             val = 0.001*float(self.ui.Xstep.text())
+            if self.ui.AddtoTCP.isChecked():
+                tcp = self.rob.robot.get_tcp()
+                tcp[0]-=val
+                self.rob.set_tcp(tcp)
+                print(f"New tcp is {tcp}")
+                return
             if self.ui.Base.isChecked():
                 self.rob.move2x(-val, wait=False)
             else:
@@ -320,6 +330,12 @@ class tweakRobot(QMainWindow):
     def goxp(self):
         try:
             val = 0.001*float(self.ui.Xstep.text())
+            if self.ui.AddtoTCP.isChecked():
+                tcp = self.rob.robot.get_tcp()
+                tcp[0]+=val
+                self.rob.set_tcp(tcp)
+                print(f"New tcp is {tcp}")
+                return
             if self.ui.Base.isChecked():
                 self.rob.move2x(val, wait=False)
             else:
@@ -331,6 +347,12 @@ class tweakRobot(QMainWindow):
     def goym(self):
         try:
             val = 0.001*float(self.ui.Ystep.text())
+            if self.ui.AddtoTCP.isChecked():
+                tcp = self.rob.robot.get_tcp()
+                tcp[1]-=val
+                self.rob.set_tcp(tcp)
+                print(f"New tcp is {tcp}")
+                return
             if self.ui.Base.isChecked():
                 self.rob.move2y(-val, wait=False)
             else:
@@ -342,6 +364,12 @@ class tweakRobot(QMainWindow):
     def goyp(self):
         try:
             val = 0.001*float(self.ui.Ystep.text())
+            if self.ui.AddtoTCP.isChecked():
+                tcp = self.rob.robot.get_tcp()
+                tcp[1]+=val
+                self.rob.set_tcp(tcp)
+                print(f"New tcp is {tcp}")
+                return
             if self.ui.Base.isChecked():
                 self.rob.move2y(val, wait=False)
             else:
@@ -353,6 +381,12 @@ class tweakRobot(QMainWindow):
     def gozm(self):
         try:
             val = 0.001*float(self.ui.Zstep.text())
+            if self.ui.AddtoTCP.isChecked():
+                tcp = self.rob.robot.get_tcp()
+                tcp[2]-=val
+                self.rob.set_tcp(tcp)
+                print(f"New tcp is {tcp}")
+                return
             if self.ui.Base.isChecked():
                 self.rob.move2z(-val, wait=False)
             else:
@@ -364,6 +398,12 @@ class tweakRobot(QMainWindow):
     def gozp(self):
         try:
             val = 0.001*float(self.ui.Zstep.text())
+            if self.ui.AddtoTCP.isChecked():
+                tcp = self.rob.robot.get_tcp()
+                tcp[2]+=val
+                self.rob.set_tcp(tcp)
+                print(f"New tcp is {tcp}")
+                return
             if self.ui.Base.isChecked():
                 self.rob.move2z(val, wait=False)
             else:

@@ -79,6 +79,16 @@
              </attribute>
             </widget>
            </item>
+           <item>
+            <widget class="QRadioButton" name="AddtoTCP">
+             <property name="text">
+              <string>Add to TCP</string>
+             </property>
+             <attribute name="buttonGroup">
+              <string notr="true">buttonGroup</string>
+             </attribute>
+            </widget>
+           </item>
           </layout>
          </item>
         </layout>
@@ -808,6 +818,8 @@
     <property name="title">
      <string>Robot</string>
     </property>
+    <addaction name="actionUnlock"/>
+    <addaction name="separator"/>
     <addaction name="actionPrint_Cartesian_Coordinates"/>
     <addaction name="actionPrint_Joints_Coordinates"/>
     <addaction name="separator"/>
@@ -895,6 +907,11 @@
   <action name="actionReturn_back_to_previous_pose">
    <property name="text">
     <string>Return back to previous pose</string>
+   </property>
+  </action>
+  <action name="actionUnlock">
+   <property name="text">
+    <string>Unlock</string>
    </property>
   </action>
  </widget>
