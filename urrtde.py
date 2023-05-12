@@ -8,6 +8,13 @@ import rtde.rtde as rtde
 import rtde.rtde_config as rtde_config
 import os
 defaultport = 30004
+
+# you may need this for rtde.py
+# if sys.version_info[0] < 3:
+#   import serialize
+# else:
+#   from rtde import serialize
+
 #parameters
 # parser = argparse.ArgumentParser()
 # parser.add_argument('--host', default='164.54.122.96', help='name of host to connect to (localhost)')

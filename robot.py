@@ -4,23 +4,90 @@ import sys
 sys.path.append(r"python-urx")
 sys.path.append(r"../python-urx")
 from urx import robot, urscript, urrobot, robotiq_two_finger_gripper
-import urrtde
+import ursecmon
+#import urmon_parser
+#import urrtde
 import math3d as m3d
 import logging
 import time
+import numpy as np
+
+class URRobot(urrobot.URRobot):
+
+    """
+    Python interface to socket interface of UR robot.
+    programs are send to port 3002
+    data is read from secondary interface(10Hz?) and real-time interface(125Hz) (called Matlab interface in documentation)
+    Since parsing the RT interface uses som CPU, and does not support all robots versions, it is disabled by default
+    The RT interfaces is only used for the get_force related methods
+    Rmq: A program sent to the robot i executed immendiatly and any running program is stopped
+    """
+
+    def __init__(self, host, use_rt=False, urFirm=None):
+        self.logger = logging.getLogger("urx")
+        self.host = host
+        self.urFirm = urFirm
+        self.csys = None
+
+        self.logger.debug("Opening secondary monitor socket")
+        self.secmon = ursecmon.SecondaryMonitor(self.host)  # data from robot at 10Hz
+
+        self.rtmon = None
+        if use_rt:
+            self.rtmon = self.get_realtime_monitor()
+        # precision of joint movem used to wait for move completion
+        # the value must be conservative! otherwise we may wait forever
+        self.joinEpsilon = 0.01
+        # It seems URScript is  limited in the character length of floats it accepts
+        self.max_float_length = 6  # FIXME: check max length!!!
+
+        self.secmon.wait()  # make sure we get data from robot before letting clients access our methods
+
 
 class Robot(robot.Robot):
     def __init__(self, host) -> None:
-        urrobot.URRobot.__init__(self, host, use_rt=False, urFirm=None)
+        URRobot.__init__(self, host, use_rt=False, urFirm=None)
         self.csys = m3d.Transform()
         FORMAT = '%(message)s'
         logging.basicConfig(format=FORMAT)
         self.logger = logging.getLogger("myrobot")
-
+        self.urFirm = (5.9)
         #self.secmon = ursecmon.SecondaryMonitor(self.host)  # data from robot at 10Hz
-        self.rtmon = urrtde.URRTMonitor(self.host)
+        #self.rtmon = urrtde.URRTMonitor(self.host)
         #self.rtmon = urrtmon.URRTMonitor(self.host)
-        self.rtmon.start()
+        #self.rtmon.start()
+
+    def calc_position_in_base(self, pos):
+        # pos is a coordinate in tcp coordinate.
+        # returns a coordinate in the base coordinate.
+        trans = self.get_pose()
+        if not isinstance(pos, m3d.Transform):
+            pos = m3d.Transform([pos[0], pos[1], pos[2], 0, 0, 0])
+        n = pos*trans
+        return n
+
+    def calc_position_in_tool(self, pos):
+        # pos is a coordinate in base coordinate.
+        # returns the coordinate in the tool coordinate.
+        trans = self.get_pose()
+        v = trans.get_pose_vector()
+        trans.invert()
+        if not isinstance(pos, m3d.Transform):
+            pos = m3d.Transform([pos[0], pos[1], pos[2], v[3], v[4], v[5]])
+        n = pos*trans
+        return n
+    
+    def set_tcp(self, tcp):
+        """
+        set robot flange to tool tip transformation
+        """
+        if isinstance(tcp, m3d.Transform):
+            tcp = tcp.pose_vector
+        urrobot.URRobot.set_tcp(self, tcp)
+        _tcp = [0, 0, 0, 0, 0, 0]
+        while not (np.round(np.array(_tcp), 5) == np.round(np.array(tcp), 5)).all():
+            _tcp = urrobot.URRobot.get_tcp(self)
+
 
 class URScript(urscript.URScript):
     def __init__(self):
