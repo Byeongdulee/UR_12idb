@@ -9,6 +9,9 @@ import rtde.rtde_config as rtde_config
 import os
 defaultport = 30004
 
+import os
+xml_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xml', 'record_configuration.xml')
+
 # you may need this for rtde.py
 # if sys.version_info[0] < 3:
 #   import serialize
@@ -31,7 +34,7 @@ defaultport = 30004
 class defaultval():
     def __init__(self):
         self.verbose = False
-        self.config = 'record_configuration.xml'
+        self.config = xml_filename
         self.output = 'robot_data.csv'
         self.buffered = True
         self.binary = False

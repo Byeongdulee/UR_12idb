@@ -4,9 +4,9 @@ import sys
 sys.path.append(r"python-urx")
 sys.path.append(r"../python-urx")
 import os
-ur12idbpath = os.path.realpath('UR_12IDB')
+text_file_path = os.path.dirname(os.path.abspath(__file__))
 
-with open(os.path.join(ur12idbpath, 'checkdistance.script'), 'r') as file:
+with open(os.path.join(text_file_path, 'urscripts', 'checkdistance.script'), 'r') as file:
     CheckdistanceScript = file.read()
 
 from urx import robot, urscript, urrobot, robotiq_two_finger_gripper

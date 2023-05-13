@@ -13,6 +13,8 @@ import math
 import traceback, sys
 import time
 import numpy as np
+import os
+text_file_path = os.path.dirname(os.path.abspath(__file__))
 
 class workerCV(QtCore.QThread):
     ImageUpdate = pyqtSignal(QtGui.QImage)
@@ -102,7 +104,7 @@ class tweakRobot(QMainWindow):
     def __init__(self, rob):
         super(tweakRobot, self).__init__()
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
-        guiName = "TweakRobot.ui"
+        guiName = os.path.join(text_file_path, 'ui', "TweakRobot.ui")
         self.rob = rob
         self.ui = uic.loadUi(guiName)
         self.ui.Xm.clicked.connect(self.goxm)
