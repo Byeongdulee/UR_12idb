@@ -3,6 +3,12 @@ import sys
 # https://github.com/Byeongdulee/python-urx
 sys.path.append(r"python-urx")
 sys.path.append(r"../python-urx")
+import os
+ur12idbpath = os.path.realpath('UR_12IDB')
+
+with open(os.path.join(ur12idbpath, 'checkdistance.script'), 'r') as file:
+    CheckdistanceScript = file.read()
+
 from urx import robot, urscript, urrobot, robotiq_two_finger_gripper
 import ursecmon
 #import urmon_parser
@@ -43,7 +49,6 @@ class URRobot(urrobot.URRobot):
 
         self.secmon.wait()  # make sure we get data from robot before letting clients access our methods
 
-
 class Robot(robot.Robot):
     def __init__(self, host) -> None:
         URRobot.__init__(self, host, use_rt=False, urFirm=None)
@@ -76,18 +81,32 @@ class Robot(robot.Robot):
             pos = m3d.Transform([pos[0], pos[1], pos[2], v[3], v[4], v[5]])
         n = pos*trans
         return n
-    
+
+    def get_tcp(self):
+        pose = self.secmon.get_tcp()
+        return pose
+
     def set_tcp(self, tcp):
         """
         set robot flange to tool tip transformation
         """
         if isinstance(tcp, m3d.Transform):
             tcp = tcp.pose_vector
-        urrobot.URRobot.set_tcp(self, tcp)
+        URRobot.set_tcp(self, tcp)
         _tcp = [0, 0, 0, 0, 0, 0]
         while not (np.round(np.array(_tcp), 5) == np.round(np.array(tcp), 5)).all():
-            _tcp = urrobot.URRobot.get_tcp(self)
+            _tcp = self.get_tcp()
 
+    def bump(self, x=0, y=0, z=0, backoff=0, wait=True):
+        #data = CheckdistanceScript
+        data = CheckdistanceScript.replace('__replace__', f'[{x}, {y}, {z}, 0, 0, 0]')
+        data = data.replace('__backoff__', f'{backoff}')
+        self.send_program(data)
+        while not self.is_program_running():
+            time.sleep(0.01)
+        if wait:
+            while self.is_program_running():
+                time.sleep(0.01)
 
 class URScript(urscript.URScript):
     def __init__(self):
