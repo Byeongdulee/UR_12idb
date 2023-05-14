@@ -20,7 +20,8 @@ try:
     from pupil_apriltags.bindings import Detection
 except ImportError:
     ISAPRILTAGS = False
-
+import os
+img_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images')
 
 imgH = 1280
 imgV = 720
@@ -86,15 +87,15 @@ __license__ = "LGPLv3"
 # 510, 0.29
 # 543, 0.19
 # 587, 0.14
-at = Detector(families='tag36h11',
-                       nthreads=1,
-                       quad_decimate=1.0,
-                       quad_sigma=0.0,
-                       refine_edges=1,
-                       decode_sharpening=0.25,
-                       debug=0)
 
 def decodeAT(img=[], F=[]):
+    at = Detector(families='tag36h11',
+                        nthreads=1,
+                        quad_decimate=1.0,
+                        quad_sigma=0.0,
+                        refine_edges=1,
+                        decode_sharpening=0.25,
+                        debug=0)
     if len(img)==0:
         print("empty image")
         return
