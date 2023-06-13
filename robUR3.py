@@ -137,7 +137,7 @@ class UR3(QObject):
         self.dashboard.unlock()
 
     def is_protective_stopped(self):
-        return self.robot.is_protective_stopped()   
+        return self.robot.secmon.is_protective_stopped()   
 
     def is_running(self):
         return self.robot.is_program_running()
