@@ -108,18 +108,18 @@ class Robot(robot.Robot):
             while self.is_program_running():
                 time.sleep(0.01)
 
-class URScript(urscript.URScript):
-    def __init__(self):
-        super().__init__(self)
+# class URScript(urscript.URScript):
+#     def __init__(self):
+#         super().__init__(self)
     
-    def _socket_get_var2var(self, var, varout, socket_name, prefix = ''):
-        msg = "{}{} = socket_get_var(\"{}\",\"{}\")".format(prefix, varout, var, socket_name)
-        self.add_line_to_program(msg)
+#     def _socket_get_var2var(self, var, varout, socket_name, prefix = ''):
+#         msg = "{}{} = socket_get_var(\"{}\",\"{}\")".format(prefix, varout, var, socket_name)
+#         self.add_line_to_program(msg)
 
-    def _socket_send_byte(self, byte, socket_name):
-        msg = "socket_send_byte(\"{}\",\"{}\")".format(str(byte), socket_name)  # noqa
-        self.add_line_to_program(msg)
-        self._sync()
+#     def _socket_send_byte(self, byte, socket_name):
+#         msg = "socket_send_byte(\"{}\",\"{}\")".format(str(byte), socket_name)  # noqa
+#         self.add_line_to_program(msg)
+#         self._sync()
 
 # class URrobot(urrobot.URRobot):
 #     def __init__(self, host):
@@ -135,6 +135,7 @@ class URScript(urscript.URScript):
 
 
 class RobotiqScript12ID(robotiq_two_finger_gripper.RobotiqScript): 
+    # should make a variable named "rq_pos" on the teach pendent to be able to run this.
     def __init__(self, host, port, sname):
         super(RobotiqScript12ID, self).__init__(socket_host=host, socket_port=port, socket_name=sname)
 
