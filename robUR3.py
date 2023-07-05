@@ -68,7 +68,7 @@ class UR3(QObject):
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
     camtcp = [0, 0.04, 0.015, -math.pi/180*30, 0, 0]
 
-    def __init__(self, name = 'UR3', finger=True, isUSBcamera=True):
+    def __init__(self, name = 'UR3', finger=True, isusbcamera=True):
         super(UR3, self).__init__()
 # definition of Cartesian Axis of UR3 at 12idb.
 # X : positive - Out board
@@ -105,10 +105,10 @@ class UR3(QObject):
         except robot.urrobot.ursecmon.ProtectiveStopException:
             print("Protective stoppped.. Connecting again.")
             self.robot = Robot(IP)
-        #if isUSBcamera:
-        #    self.camera = camera(IP='')
-        #else:
-        #    self.camera = camera(IP)
+        if isusbcamera:
+            self.camera = camera(IP='')
+        else:
+            self.camera = camera(IP)
         if finger:
             self.finger = Robotiq_Two_Finger_Gripper(self.robot)
         else:
