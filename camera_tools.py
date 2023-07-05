@@ -442,10 +442,13 @@ def showcamera(rob, obj_distance=0.12):
             print("  rotate robot: e(-rZ),r(+rZ),f(-rNorth),g(+rNorth)")
             print("  camera tilt down: t")
             print("  center QR: c")
-            print("  print QR code info: q")
+            print("  print QR code info: p")
             print("  Measure distance : M")
             print("  exit: ESC")
         if key == 113: #q
+            #print(QRcode)
+            break
+        if key == 112: #p
             #print(QRcode)
             print(r.homography)
         if key == 116: #t
