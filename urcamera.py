@@ -124,14 +124,14 @@ def showQRcode(QRdata, image):
 
 class camera(object):
     def __init__(self,
-                 IP="", device=0):
+                 IP="", device=0, apriltagsize = AT_size):
         self.IP = IP
         self.device = device
         self.camera_f = camera_f
         self.imgH = imgH
         self.imgV = imgV
         self.QR_physical_size = QRsavSize
-        self.AT_physical_size = AT_size
+        self.AT_physical_size = apriltagsize
         self.intrinsic_mtx = []
         self._running = False
         if len(self.IP) == 0:
