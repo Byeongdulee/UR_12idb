@@ -1,8 +1,12 @@
 ''' This program is to use the UR3 robot at 12IDB of APS'''
 import sys
-sys.path.append(r"..")
-sys.path.append(r"UR_12ID")
-sys.path.append(r"UR_12ID/ini")
+import os
+#sys.path.append(r"..")
+#sys.path.append(r"UR_12ID")
+#sys.path.append(r"UR_12ID/ini")
+text_file_path = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(text_file_path, '../UR_12ID'))
+sys.path.append(os.path.join(text_file_path, '../UR_12ID/ini'))
 
 QRPVavailable = False
 try:
@@ -17,6 +21,10 @@ from PyQt5.QtWidgets import QWidget
 
 import time
 import numpy
+import math3d as m3d
+import numpy as np
+import math
+import json
 # conda install -c anaconda freetype
 # conda install -c conda-forge ez_setup
 #beamlinePV = '12idc:'
@@ -30,12 +38,6 @@ class RobotException(Exception):
     pass
 
 # UR3
-import os
-import math3d as m3d
-import numpy as np
-import math
-import time
-import json
 import robUR3
 from urcamera import Detection as atDET
 from urcamera import cal_AT2pose
