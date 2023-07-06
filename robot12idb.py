@@ -76,7 +76,7 @@ class UR3(robUR3.UR):
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
 #    camtcp = [-0.001, 0.04, 0.015, -math.pi/180*30, 0, 0]
     camtcp = [0, 0.04, 0.015, -math.pi/180*30, 0, 0]
-    april_tag_on_heater = {'size': 0.01}
+    april_tag_on_heater = {'size': 0.0083}
 
     def __init__(self, name = 'UR3', fingertype=1, cameratype=2):
 # definition of Cartesian Axis of UR3 at 12idb.
