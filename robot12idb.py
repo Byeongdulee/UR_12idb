@@ -5,8 +5,9 @@ import os
 #sys.path.append(r"UR_12ID")
 #sys.path.append(r"UR_12ID/ini")
 text_file_path = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.join(text_file_path, '../UR_12ID'))
-sys.path.append(os.path.join(text_file_path, '../UR_12ID/ini'))
+sys.path.append(os.path.join(text_file_path, 'UR12ID'))
+sys.path.append(os.path.join(text_file_path, 'UR12ID/ini'))
+sys.path.append(os.path.join(text_file_path, '..'))
 
 QRPVavailable = False
 try:
@@ -104,8 +105,8 @@ class UR3(robUR3.UR):
         super(UR3, self).__init__(IP, fingertype=fingertype, cameratype=cameratype)
 
         self.name = name
-        self.ini_name = '%s.ini'%name
-        self._path_ini_name = '%spath.ini'%name
+        self.ini_name = os.path.join(text_file_path, 'ini', '%s.ini'%name)
+        self._path_ini_name = os.path.join(text_file_path, 'ini', '%spath.ini'%name)
         self.isSampleOnStage = False
         self.currentFrame = 0
         self.tweak_reference_axis_angle = None

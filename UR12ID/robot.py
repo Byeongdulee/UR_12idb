@@ -1,11 +1,9 @@
 import sys
-# get the python-urx from below:
-# https://github.com/Byeongdulee/python-urx
-sys.path.append(r"python-urx")
-sys.path.append(r"../python-urx")
-sys.path.append(r"../../python-urx")
 import os
 text_file_path = os.path.dirname(os.path.abspath(__file__))
+# get the python-urx from below:
+# https://github.com/Byeongdulee/python-urx
+sys.path.append(os.path.join(text_file_path, '..', '..', 'python-urx'))
 
 with open(os.path.join(text_file_path, '../urscripts', 'checkdistance.script'), 'r') as file:
     CheckdistanceScript = file.read()
