@@ -1,10 +1,6 @@
 # UR3
-from PyQt5.QtCore import (pyqtSignal, QObject)
-from PyQt5.QtWidgets import QWidget
-import os
-import sys
+from PyQt5.QtCore import QObject
 import math3d as m3d
-import time
 import math
 
 from robodk.robolink import Robolink, ITEM_TYPE_ROBOT     # RoboDK API
@@ -46,9 +42,6 @@ class roboUR3(QObject):
 
     #robot.setFrame(frameSam)
     
-    sigFinger = pyqtSignal(str)
-    sigMoving = pyqtSignal(bool)
-
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
     camtcp = [0.0,0.04,0.015,0.0,0.0,0.0]
 

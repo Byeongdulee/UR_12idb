@@ -2,8 +2,11 @@ import argparse
 import logging
 import sys
 import threading
-sys.path.append('..')
-sys.path.append('ur-rtde')
+
+import os
+text_file_path = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(text_file_path, '../ur-rtde'))
+#sys.path.append('ur-rtde')
 import rtde.rtde as rtde
 import rtde.rtde_config as rtde_config
 import os

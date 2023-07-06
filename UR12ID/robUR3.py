@@ -1,29 +1,31 @@
-from PyQt5.QtCore import (pyqtSignal, QObject)
+''' This program is to define UR robot with Robotiq gripper and camera '''
+#import time
+from PyQt5.QtCore import QObject
 
-import time
 import numpy
 
 class RobotException(Exception):
     pass
 
-# UR3
-import os
-import sys
+class NoCameraException(Exception):
+    pass
 
+class NoFingerException(Exception):
+    pass
+
+# UR3
 import math3d as m3d
-import numpy as np
+#import numpy as np
 import logging
 import math
-import time
+#import time
 from robot import Robotiq_Two_Finger_Gripper
 from robot import Robot
 from urdashboard import dashboard
 from urcamera import camera
-from urcamera import Detection as atDET
-from urcamera import cal_AT2pose
-import camera_tools as ctool
 import robot
-import json
+
+
 #from urrobot import URRobot
 
 #### Standard orientations.
@@ -56,63 +58,50 @@ def ind2sub(ind, array_shape):
 def sub2ind(rows, cols, array_shape):
     return rows*array_shape[1] + cols
 
-class UR3(QObject):
+class UR(QObject):
     # unit of position vector : meter.
-    sigFinger = pyqtSignal(str)
-    sigMoving = pyqtSignal(bool)
-    sigFingerPosition = pyqtSignal(str)
-    sigObject_onFinger = pyqtSignal(bool)
-    sigRobotCommand = pyqtSignal(str)
-    sigRobotPosition = pyqtSignal(numpy.ndarray)
     _TCP2CAMdistance = 0.12
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
     camtcp = [0, 0.04, 0.015, -math.pi/180*30, 0, 0]
 
-    def __init__(self, name = 'UR3', finger=True, isusbcamera=True):
-        super(UR3, self).__init__()
-# definition of Cartesian Axis of UR3 at 12idb.
-# X : positive - Out board
-# X : negative - In board
-# Y : positive - Along X-ray
-# Y : negative - Again X-ray
+    def __init__(self, name = 'UR3', fingertype=1, cameratype=0):
+        # fingertype:
+        #   0: No finger
+        #   1: Robotiq finger
+        # cameratype :
+        #   0: No camera
+        #   1: IP camera
+        #   2: USB camera
+
+        super(UR, self).__init__()
         if '.' in name:
             IP = name
         else:
-            try:
-                #with open('../RobotList/list_of_robots.json') as json_file:
-                jsname = 'list_of_robots.json'
-                if os.path.exists('RobotList'):
-                    fn = os.path.join('RobotList', jsname)
-                if os.path.exists('../RobotList'):
-                    fn = os.path.join('../RobotList', jsname)
-                with open(fn) as json_file:
-                    IPlist = json.load(json_file)
-                IP = IPlist[name]
-            except FileNotFoundError:
-                print("Please provide the IP number of your robot control box.")
-                return
-            except KeyError:
-                print(f"{name} does not exist in ../RobotList/list_of_robots.json")
-                return
+            raise ValueError('IP address should be given.')
 
-        self.logger = logging.getLogger(name)
-
+        self.logger = logging.getLogger(IP)
+        
         try:
 #            self.robot = urx.Robot(IP)
             self.robot = Robot(IP)
         except TimeoutError:
-            exit
+            raise RobotException(f'Robot {IP} does not respond.')
         except robot.urrobot.ursecmon.ProtectiveStopException:
             print("Protective stoppped.. Connecting again.")
             self.robot = Robot(IP)
-        if isusbcamera:
+
+        if cameratype==2:
             self.camera = camera(IP='')
-        else:
+        elif cameratype==1:
             self.camera = camera(IP)
-        if finger:
+        else:
+            pass
+
+        if fingertype==1:
             self.finger = Robotiq_Two_Finger_Gripper(self.robot)
         else:
-            self.finger = None
+            pass
+
         #self.__TCP2CAMdistance = 0.15
         self.robot.IP = IP
         self.set_tcp(self.tcp)
@@ -121,12 +110,12 @@ class UR3(QObject):
         if self.robot.secmon.is_protective_stopped():
             self.dashboard.unlock()
         #self.finger.gripper_activate()
-        self.name = name
 
     def terminate(self):
         self.robot.close()
         try:
-            self.camera.vidcap.release()
+            if hasattr(self, 'camera'):
+                self.camera.vidcap.release()
         except:
             pass
 
@@ -445,22 +434,6 @@ class UR3(QObject):
         #print(t.orient.get_rotation_vector())
         return self.robot.set_orientation(t.orient.get_rotation_vector(), acc=0.5, vel=0.5)
 
-# Gripper functions
-    def activate_gripper(self):
-        self.finger.gripper_activate()
-
-    def grab(self):
-        self.finger.close_gripper()
-        #self.finger.gripper_action(255)
-
-    def release(self):
-        #self.finger.open_gripper()
-        self.finger.gripper_action(120)
-
-    def loosen(self):
-        #self.finger.open_gripper()
-        self.finger.gripper_action(190)
-
 # special functions
     def measureheight(self): # measure height by bumping along -z direction.
         back_up = 0.01
@@ -475,8 +448,34 @@ class UR3(QObject):
         #distance = v[2]+0.01
         return v
 
+# Gripper functions
+    def activate_gripper(self):
+        if not hasattr(self, 'finger'):
+            raise NoFingerException('No gripper defined.')
+        
+        self.finger.gripper_activate()
+
+    def grab(self):
+        if not hasattr(self, 'finger'):
+            raise NoFingerException('No gripper defined.')
+        self.finger.close_gripper()
+        #self.finger.gripper_action(255)
+
+    def release(self):
+        if not hasattr(self, 'finger'):
+            raise NoFingerException('No gripper defined.')
+        self.finger.gripper_action(120)
+
+    def loosen(self):
+        if not hasattr(self, 'finger'):
+            raise NoFingerException('No gripper defined.')
+        self.finger.gripper_action(190)
+
 # Camera functions.
     def tweak_around_camera_axis(self, ang, acc=0.5, vel=0.5):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
+
         # rolling up and down around the tool X axis.
         if self.tweak_reference_axis_angle is None:
             vv = self.robot.get_orientation()
@@ -497,6 +496,9 @@ class UR3(QObject):
         print(f"XY plane is rotated {rotang} degree from the reference direction.")
 
     def undo_tweak_around_camera_axis(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
+
         if not hasattr(self, 'tweak_axis_angle'):
             return
         if self.tweak_reference_axis_angle != None:
@@ -504,6 +506,9 @@ class UR3(QObject):
             self.tweak_reference_axis_angle = None
 
     def capture_camera(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
+        
         if not self.camera._running:
             self.camera.capture()
         v = self.get_xyz().tolist()
@@ -517,6 +522,9 @@ class UR3(QObject):
 
 
     def tilt_over(self, distance=0, ang = 30, dir=[1, 0], acc=0.25, vel=0.25):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
+
         # tilt around a point at a "distance" away from the camera along the camera axis.
         # dir: [1, 0] = north direction on the camera feed.
         # dir: [0, 1] = east direction on the camera feed. 
@@ -540,14 +548,22 @@ class UR3(QObject):
         return m
 
     def tilt_over_back(self, distance=0, ang = 30):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
+
         return self.tilt_over(distance=distance, ang = ang, dir=[-1, 0])
 
     def camera2z(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
+
         self.set_tcp(self.camtcp)
         self.set_orientation()
         self.set_tcp(self.tcp)
 
     def tilt_camera_down(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         self.camera2z()
 #     def tilt_camera_down(self):
 # #       make camera face down regardless of the direction of camera.
@@ -563,6 +579,8 @@ class UR3(QObject):
 #         return trans
 
     def tilt_y(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         # have camera on +y axis and tilt down to face floor.
         val = 30
         v = self.robot.get_pose()
@@ -584,6 +602,9 @@ class UR3(QObject):
         #return self.robot.set_pose(v, acc=0.5, vel=0.5, wait=True, command='movel', threshold=None)
 
     def tilt_ym(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
+
         # have camera on -y axis and tilt down to face floor.
 
         val = 30
@@ -608,6 +629,9 @@ class UR3(QObject):
         return m
 
     def tilt_xm(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
+
         # have camera on -x axis and tilt down to face floor.
 
         val = 30
@@ -622,6 +646,8 @@ class UR3(QObject):
         return self.robot.set_pose(v, acc=0.5, vel=0.5, wait=True, command='movel', threshold=None)
 
     def tilt_x(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         # have camera on +x axis and tilt down to face floor.
         val = 30
         v = self.robot.get_pose()
@@ -634,6 +660,8 @@ class UR3(QObject):
         return self.robot.set_pose(v, acc=0.5, vel=0.5, wait=True, command='movel', threshold=None)
 
     def tilt_back(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         if self.is_Z_aligned():
             print("Robot is already Z aligned.")
             return
@@ -655,225 +683,9 @@ class UR3(QObject):
         #print(vect)
         return self.robot.set_pose(t, acc=0.5, vel=0.5, wait=True, threshold=None)
 
-    def update_camera_info(self):
-        # qrcode sav 
-        # size; 22.5mm
-        # at 250mm away, 120 pixels.
-        timeouttime = 1
-        if not self.camera._running:
-            self.camera.capture()
-        self.camera.decode()
-        t0 = time.time()
-        while (time.time()-t0)<timeouttime:
-            if len(self.camera.QRposition)==0:
-                if not self.camera._running:
-                    self.camera.capture()
-                self.camera.decode()
-                if len(self.camera.QRsize) == 0:
-                    self.camera.QRsize[0] = 0
-#                else:
-#                    self.camera.QRdistance = 250/self.camera.QRsize[0]*120
-            else:
-                if self.camera.QRsize[0]>0:
-                    self.camera.QRdistance = 250/self.camera.QRsize[0]*120
-                return True
-        if len(self.camera.QRposition)==0:
-            print("Time out")
-            return False
-        else:
-            if self.camera.QRsize[0]>0:
-                self.camera.QRdistance = 250/self.camera.QRsize[0]*120
-            return True
-
-    def update_camera2QR_info(self):
-        timeouttime = 1
-        if not self.camera._running:
-            self.camera.capture()
-        self.camera.decode2QR()
-        t0 = time.time()
-        while (time.time()-t0)<timeouttime:
-            if len(self.camera.QRposition)==0:
-                if not self.camera._running:
-                    self.camera.capture()
-                self.camera.decode2QR()
-                if len(self.camera.QRposition) == 0:
-                    self.camera.QRsize[0] = 0
-            else:
-                if self.camera.QRsize[0]>0:
-                    self.camera.QRdistance = 250/self.camera.QRsize[0]*120
-                return True
-        if len(self.camera.QRposition)==0:
-            print("Time out")
-            return False
-        else:
-            if self.camera.QRsize[0]>0:
-                self.camera.QRdistance = 250/self.camera.QRsize[0]*120
-            return True
-
-    def bring_QR_to_camera_center(self, referenceName = "2QR", acc=0.1, vel=0.1):
-        if not self.camera._running:
-            self.camera.capture()
-        if referenceName == "2QR":
-            self.camera.decode2QR()
-        elif referenceName == "AT":
-            try:
-                r = self.camera.decodeAT()
-            except:
-                r = self.camera.decoded
-        else:
-            self.camera.decode()
-        isDistanceIn = False
-        isNorthIn = False
-        isEastIn = False
-        distance = 0.01
-        edist = 0.01
-        ndist = 0.01
-        prevndir = 0
-        prevedir = 0
-        prevdir = 0
-        timeout = 1
-        target_distance = 180
-        # if referenceName == "2QR":
-        #     target_QRedgelength = 100   # this is the edgelength of the 2QR references.
-        # else:
-        #     target_QRedgelength = 120   # this is the edgelength of a QR code at the optimum distance from a camera.
-        #     target_distance = 150 #20mm
-        #if not hasattr(self.camera, 'QRposition') or not hasattr(self.camera, 'QRsize'):
-        if not self.camera._running:
-            self.camera.capture()
-        if referenceName == "2QR":
-            self.camera.decode2QR()
-        elif referenceName == "AT":
-            try:
-                r = self.camera.decodeAT()
-            except:
-                r = self.camera.decoded
-        else:
-            self.camera.decode()
-        if hasattr(self.camera, 'QRtiltangle'):
-#            print(f"Tilt angle is {self.camera.QRtiltangle}")
-            if abs(self.camera.QRtiltangle) < 100:
-                self.rotate_around_Zaxis_camera(-self.camera.QRtiltangle)
-            else:
-                self.rotate_around_Zaxis_camera(180-self.camera.QRtiltangle)
-        if hasattr(self.camera, 'QRposition') and hasattr(self.camera, 'QRsize'):
-            if referenceName == "2QR":
-                rtn = self.update_camera2QR_info()
-            else:
-                rtn = self.update_camera_info()
-            if rtn == False:
-                return False
-            failcount = 0
-            while not isDistanceIn or not isNorthIn or not isEastIn:
-#                if not hasattr(self.camera, 'QRposition') or not hasattr(self.camera, 'QRsize'):
-#                    continue
-                if referenceName == "2QR":
-                    rtn = self.update_camera2QR_info()
-                else:
-                    rtn = self.update_camera_info()
-                if rtn == False:
-                    return False
-                if not hasattr(self.camera, 'QRdistance'):
-                    break
-#                print(self.camera.QRdistance)
-                if len(self.camera.QRposition)>0 and len(self.camera.QRsize)>0:
-                    if self.camera.QRsize[0] == 0:
-                        continue
-                    imsize = self.camera.image.size
-                    qs = sum(self.camera.QRsize)/len(self.camera.QRsize)
-                    qs = self.camera.QRdistance
-                    if abs(qs-target_distance) <2:
-                        distance = 0.0
-                        isDistanceIn = True
-                    if qs-target_distance < 0:
-                        dir = -1
-                    else:
-                        dir = 1
-                    distance = abs(qs-target_distance)/1000
-
-                    if self.camera.QRposition[0]-imsize[0]/2 < 0:
-                        edir = -1
-                    else:
-                        edir = 1
-                    if self.camera.QRposition[1]-imsize[1]/2 < 0:
-                        ndir = 1
-                    else:
-                        ndir = -1
-                    # QRcode size is 22mm x 22mm
-                    ndist = abs(self.camera.QRposition[1]-imsize[1]/2)/self.camera.QRsize[0]*0.022
-                    edist = abs(self.camera.QRposition[0]-imsize[0]/2)/self.camera.QRsize[0]*0.022
-                    #print(f"distance is {distance}")
-                    #print(f"ndist is {ndist}")
-                    #print(f"edist is {edist}")
-
-                    if distance < 5:
-                        if abs(edist)<0.002 and abs(ndist)<0.002:
-                            print("Done. QR code is centered.")
-                            break
-
-                    if abs(self.camera.QRposition[0]-imsize[0]/2) <5:
-                        edist = 0.0
-                        isEastIn = True
-
-                    if abs(self.camera.QRposition[1]-imsize[1]/2) <5:
-                        ndist = 0.0
-                        isNorthIn = True
-                    print(dir*distance, "North = ", ndir*ndist, "East =", edir*edist)
-                    self.move_toward_camera(distance=dir*distance, north=ndir*ndist, east=edir*edist, acc=acc, vel=vel)
-                else:
-                    print(dir*distance, "North2 = ", ndir*ndist, "East2 =", edir*edist)
-                    self.move_toward_camera(distance=-dir*distance, north=-ndir*ndist, east=-edir*edist, acc=acc, vel=vel)
-                    failcount = failcount+1
-                    if failcount>5:
-                        break
-            print("QR code is centered.")
-        else:
-            print("Bring QR closer to the camera")
-
-    def tilt_align(self):
-        if b'Follow me' in self.camera.QRdata:
-            h, pd, ang, tilt = ctool.decodefollowme(self)
-            tilt = np.array(tilt)
-            #height = 0.3796914766079877
-            print(f"'Follow me' is found at {h}m below.")
-            while not (tilt[0] ==0 and tilt[1]==0):
-                North = tilt[0]
-                East = tilt[1]
-                signN = np.sign(tilt[0])
-                signE = np.sign(tilt[1])
-                if North != 0:
-                    self.tilt_over(h, ang=signN*5, dir = [1, 0])
-                if East != 0:
-                    self.tilt_over(h, ang=signE*5, dir = [0, 1])
-                h, pd, ang, tilt = ctool.decodefollowme(self)
-                while h==0:
-                    h, pd, ang, tilt = ctool.decodefollowme(self)
-                tilt = np.array(tilt)
-
-    def relocate_camera(self):
-        # Locate camera at the shortest distance between the objec and base.
-        # align Z
-        # set camera position 0.2m away from the obj
-        obj_pos, campos = self.get_obj_position_from_camera_center()
-        #if not isinstance(orient, m3d.Orientation):
-        orient = m3d.Orientation([0, -math.pi, 0]) # make camera point +y axis.
-        #orient.rotate_zb(math.pi/2) # make camera point +x
-        trans = self.robot.get_pose()
-        trans.orient = orient
-        trans.orient.rotate_zb(math.atan2(obj_pos[1], obj_pos[0])-math.pi/2)
-        newpos = (obj_pos.length-0.2)/obj_pos.length*obj_pos
-        trans.set_pos(newpos)
-        self.robot.set_pose(trans, acc=0.1, vel=0.1)
-
-    def get_obj_position_from_camera_center(self):
-        # calculate the object position that is at the center of camera image and QRrefdistance away from the camera surface.
-        cameravector, v1, v2 = self.get_camera_vector()
-        campos = self.get_camera_position()
-        QRrefdistance = 0.2
-        pos = campos.pos + QRrefdistance*cameravector/cameravector.length
-        return pos, campos
-
     def move_over_camera(self, distance, acc=0.5, vel=0.5):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         # move along the camera north direction.
         cameravector = self.robot.get_orientation().get_vec_y()
         cameravector = cameravector*distance
@@ -882,12 +694,16 @@ class UR3(QObject):
         self.moveto(v, acc=acc, vel=vel)
 
     def get_camera_position(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         self.set_tcp(self.camtcp)
         t = self.robot.get_pose()
         self.set_tcp(self.tcp)
         return t
 
     def get_camera_vector(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         cameravector_east = self.robot.get_orientation().get_vec_x()
         v = self.robot.get_orientation()
         v.rotate_b(cameravector_east, math.pi/3)
@@ -906,6 +722,8 @@ class UR3(QObject):
         return cameravector, cameravector_north, -cameravector_east
 
     def move_toward_camera(self, distance, north=0.0, east=0.0, acc=0.5, vel=0.5):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         # north is the vertical direction on the camera image.
         # east is the right direction on the camera image.
         # When distance is 0, the TCP moves on the normal plane to the camera vector.
@@ -921,6 +739,8 @@ class UR3(QObject):
         self.robot.set_pose(np, acc=acc, vel=vel, wait=True, command="movej", threshold=None)
 
     def roll_around_camera(self, val, distance, dir='y'):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         newtcp = []
         for v in self.camtcp:
             newtcp.append(v)
@@ -934,6 +754,8 @@ class UR3(QObject):
         self.set_tcp(self.tcp)
 
     def camera_y(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         trans = self.robot.get_pose()
         pos = trans.get_pos()
         if pos[1] < 0:
@@ -948,6 +770,8 @@ class UR3(QObject):
         self.robot.set_pose(trans, acc=0.1, vel=0.1)
 
     def camera_x(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         trans = self.robot.get_pose()
         pos = trans.get_pos()
         if pos[0] < 0:
@@ -961,6 +785,8 @@ class UR3(QObject):
         self.robot.set_pose(trans, acc=0.1, vel=0.1)
 
     def camera_out(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         #self.along(self.__TCP2CAMdistance*math.cos(math.pi/6))
         # if hasattr(self, '_pos_before_camtilt'):
         #     v0 = self._pos_before_camtilt
@@ -1009,6 +835,8 @@ class UR3(QObject):
         self.robot.movel(np0, acc=0.5, vel=0.5)
 
     def rotate_around_Zaxis_camera(self, ang):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         # rotate around the camera axis, degree input.
         self.set_tcp(self.camtcp)
         self.rotz(ang)
@@ -1022,6 +850,8 @@ class UR3(QObject):
 
     # putting the tooltip to the current camera position
     def fingertip2camera(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         self.prev_tcp = self.robot.get_tcp()
         self.set_tcp(self.camtcp)
         pose = self.robot.get_pose()
@@ -1031,6 +861,8 @@ class UR3(QObject):
 
     # putting the camera to the current tooltip position
     def camera2fingertip(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         self.prev_tcp = self.robot.get_tcp()
         self.set_tcp(self.tcp)
         pose = self.robot.get_pose()
@@ -1040,6 +872,8 @@ class UR3(QObject):
     
     # special case of fingertip2camera. This is to make the finger tip face down.
     def put_tcp2camera(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         self.set_tcp(self.camtcp)
         pos = self.robot.get_pos()
         self.set_tcp(self.tcp)
@@ -1048,55 +882,11 @@ class UR3(QObject):
 
     # special case of camera2fingertip. This is to make the camera face down.
     def put_camera2tcp(self):
+        if not hasattr(self, 'camera'):
+            raise NoCameraException('No camera defined.')
         pos = self.robot.get_pos()
         self.tilt_camera_down()
         self.set_tcp(self.camtcp)
         self.robot.set_pos(pos, acc=0.1, vel=0.1)
         self.set_tcp(self.tcp)
     
-    def orient2aprilTag(self):
-        if not hasattr(self.camera, 'decoded'):
-            return False
-        r = self.camera.decoded
-        if not isinstance(r, atDET):
-            print("No aprilTag in the camera. Capture it and try again.")
-            return
-        euler, t, pos = cal_AT2pose(r)
-#        self.set_tcp(self.camtcp)
-        # #t = self.robot.get_pose()
-        # p.orient = m3d.Orientation(R.orient.matrix.tolist())
-#        self.move2xTCP(-t[0])
-#        self.move2yTCP(-t[1])
-
-
-        self.move_toward_camera(distance=0, north=-t[1][0], east=t[0][0], acc=0.1, vel=0.2)
-
-        p = self.robot.get_pose()
-        self.prev_pose = p.copy()
-        self.prev_tcp = self.robot.get_tcp()
-
-        p.orient.rotate_zt(euler[2]/180*math.pi)
-        p.orient.rotate_yt(-euler[1]/180*math.pi)
-        p.orient.rotate_xt(-euler[0]/180*math.pi)
-        #print(p)
-        self.robot.set_pose(p, wait=True, acc=0.1, vel=0.2, command="movej")
-
-
-# #        self.move2xTCP(-t[0])
-# #        self.move2yTCP(-t[1])
-#         self.set_tcp(self.tcp)
-        return euler, t, p
-
-    def center_aprilTag(self):
-        if not hasattr(self.camera, 'decoded'):
-            return False
-        r = self.camera.decoded
-        if not isinstance(r, atDET):
-            print("No aprilTag in the camera. Capture it and try again.")
-            return
-        euler, t, pos = cal_AT2pose(r)
-        dx = self.camera.imgH/2-r.center[0]
-        dy = self.camera.imgV/2-r.center[1]
-        dX = -dx/self.camera.camera_f*t[2].tolist()[0]
-        dY = dy/self.camera.camera_f*t[2].tolist()[0]
-        self.move_toward_camera(distance=0, north=dY, east=dX, acc=0.5, vel=0.5)

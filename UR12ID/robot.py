@@ -3,10 +3,11 @@ import sys
 # https://github.com/Byeongdulee/python-urx
 sys.path.append(r"python-urx")
 sys.path.append(r"../python-urx")
+sys.path.append(r"../../python-urx")
 import os
 text_file_path = os.path.dirname(os.path.abspath(__file__))
 
-with open(os.path.join(text_file_path, 'urscripts', 'checkdistance.script'), 'r') as file:
+with open(os.path.join(text_file_path, '../urscripts', 'checkdistance.script'), 'r') as file:
     CheckdistanceScript = file.read()
 
 from urx import robot, urrobot, robotiq_two_finger_gripper
