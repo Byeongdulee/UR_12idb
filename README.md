@@ -7,15 +7,27 @@ https://github.com/Byeongdulee/python-urx
 
 urrtde.py requires https://github.com/UniversalRobots/RTDE_Python_Client_Library at a folder 'ur-rtde' or change the folder name in urrtde.py.
 
+math3d, https://gitlab.com/morlin/pymath3d
+pyzbar, pip install pyzbar, note Window error message on https://pypi.org/project/pyzbar/
+pupil-apriltags, pip install pupil-apriltags, https://pypi.org/project/pupil-apriltags/
+
 # History
 The secondary monitor of python-urx was rewritten for better use at the APS.
 Since the rtde code of python-urx does not support many feature required for 12ID operation, it is replaced with ur-rtde distributed by Universal Robot.
 
-# Robotiq Camera
-The robotiq camera comes with a long USB cable that goes to the UR control computer. In order to use this camera using python, you must plug the USB cable into the computer that runs this python code.
-See camera_tools.py for examples.
+# Example
+> import sys
+> sys.path.append('UR12ID)
 > import robUR3
 > rob = robUR3.UR3("164.54.xxx.xxx") 
+> rob.move2z(0.1)
+
+# The 12IDB UR3
+The UR3 robot at APS 12IDB equips with a Robotiq gripper and a Robotiq wrist camera. 
+The robotiq camera comes with a long USB cable that goes to the UR control computer. In order to use this camera using python, you must plug the USB cable into the computer that runs this python code.
+See camera_tools.py for examples.
+> import robot12idb as rb
+> rob = rb.UR3()
 > import camera_tools as ct
 > ct.showcamera(rob)
 It will pop up a camera feed window. Press "h" key for help.
