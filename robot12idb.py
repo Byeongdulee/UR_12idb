@@ -78,7 +78,7 @@ class UR3(robUR.UR):
 #    camtcp = [-0.001, 0.04, 0.015, -math.pi/180*30, 0, 0]
     camtcp = [0, 0.04, 0.015, -math.pi/180*30, 0, 0]
 
-    def __init__(self, name = 'UR3', fingertype=1, cameratype=2):
+    def __init__(self, name = 'UR3', fingertype=1, cameratype=1):
 # definition of Cartesian Axis of UR3 at 12idb.
 # X : positive - Out board
 # X : negative - In board

@@ -10,6 +10,10 @@ import threading
 from scipy.spatial.transform import Rotation
 ISQR = True
 ISAPRILTAGS = True
+
+class NoUSBCameraException(Exception):
+    pass
+
 try:
     from pyzbar import pyzbar
 except ImportError:
@@ -145,6 +149,9 @@ class camera(object):
             self.focus(520)
     
     def scanfocus(self):
+        if len(self.IP)>0:
+            raise NoUSBCameraException
+        
         for i in range(350,600,5):
             ret, img = self.capture()
             if not isblurry(img):
@@ -155,6 +162,8 @@ class camera(object):
         return foc
 
     def focus(self, val):
+        if len(self.IP)>0:
+            raise NoUSBCameraException
         #  #Not sure what max and min range are for the camera focus, 
         # I found that a value of 450 works well at a 1 ft range under current conditions
         if len(self.IP) == 0:
@@ -162,12 +171,16 @@ class camera(object):
             self.vidcap.set(cv2.CAP_PROP_FOCUS, val)
 
     def autofocus(self):
+        if len(self.IP)>0:
+            raise NoUSBCameraException
         if len(self.IP) == 0:
             self.vidcap.set(cv2.CAP_PROP_AUTOFOCUS,1)
             foc = self.vidcap.get(cv2.CAP_PROP_FOCUS)
             return foc
 
     def get_foc(self):
+        if len(self.IP)>0:
+            raise NoUSBCameraException
         foc = self.vidcap.get(cv2.CAP_PROP_FOCUS)
         return foc
 
