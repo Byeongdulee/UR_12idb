@@ -1103,9 +1103,9 @@ class UR3(robUR.UR):
         return euler, t, p
 
     def center_aprilTag(self):
-        if not hasattr(self.camera, 'decoded'):
+        if not hasattr(self.camera, 'image'):
             return False
-        r = self.camera.decoded
+        r = self.camera.decodeAT()
         if not isinstance(r, atDET):
             print("No aprilTag in the camera. Capture it and try again.")
             return

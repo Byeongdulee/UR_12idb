@@ -219,7 +219,7 @@ class camera(object):
         return ret, pilImage
 
     def decodeAT(self):
-        r = decodeAT(self.image, self.intrinsic_mtx)
+        r = decodeAT(self.image, self.intrinsic_mtx, self.camera_f, self.imgH, self.imgV)
         if type(self.intrinsic_mtx) is not np.ndarray:
             if len(self.intrinsic_mtx)==0:
                 K = np.array([[self.camera_f, 0, self.imgH/2], [0, self.camera_f, self.imgV/2], [0, 0, 1]])
@@ -233,7 +233,7 @@ class camera(object):
             pos = np.linalg.inv(K@r.homography*r.pose_t[2])@np.array([r.center[0], r.center[1], 1])
 #            print(r.pose_t.transpose())
 #            print(r.homography)
-#            print(pos)
+            print(pos)
         else:
             r = None
             pos = None
