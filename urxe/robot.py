@@ -166,6 +166,28 @@ class Robotiq_Two_Finger_Gripper(robotiq_two_finger_gripper.Robotiq_Two_Finger_G
         # the action completes
         time.sleep(sleep)
 
+    def set_gripper_force(self, force):
+        """
+        Activate the gripper to a given value from 0 to 255
+
+        0 is open
+        255 is closed
+        """
+        self.force = force
+        urscript = self._get_urscript()
+        urscript._set_gripper_force(self.force)
+        # Move to the position
+        sleep = 2.0
+        urscript._sleep(sleep)
+
+        # Send the script
+#        print(urscript())
+        self.robot.send_program(urscript())
+
+        # sleep the code the same amount as the urscript to ensure that
+        # the action completes
+        time.sleep(sleep)
+
     def _get_urscript(self):
         """
         Set up a new URScript to communicate with gripper
