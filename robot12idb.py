@@ -1105,13 +1105,31 @@ class UR3(robUR.UR):
     def center_aprilTag(self):
         if not hasattr(self.camera, 'image'):
             return False
-        r = self.camera.decodeAT()
+        r = self.camera.decoded
         if not isinstance(r, atDET):
             print("No aprilTag in the camera. Capture it and try again.")
-            return
+            return False
         euler, t, pos = cal_AT2pose(r)
         dx = self.camera.imgH/2-r.center[0]
         dy = self.camera.imgV/2-r.center[1]
         dX = -dx/self.camera.camera_f*t[2].tolist()[0]
         dY = dy/self.camera.camera_f*t[2].tolist()[0]
-        self.move_toward_camera(distance=0, north=dY, east=dX, acc=0.5, vel=0.5)    
+        self.move_toward_camera(distance=0, north=dY, east=dX, acc=0.5, vel=0.5)
+        return True
+    
+    def center_camera2apriltag(self):
+        max_trialN = 10
+        trial = 0
+        done = False
+        while trial<max_trialN:
+            img = self.camera.capture()
+            r = self.camera.decodeAT()
+            if isinstance(r, atDET):
+                done = True
+                break
+        if done:
+            self.center_aprilTag()
+            return done
+        print(f"Cannot find an april tag in the camera feed.")
+        return False
+        
