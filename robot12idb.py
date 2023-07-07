@@ -1131,5 +1131,29 @@ class UR3(robUR.UR):
             self.center_aprilTag()
             return done
         print(f"Cannot find an april tag in the camera feed.")
+        return False        
+
+def auto_align_12idb_remote_heater(rob):
+    rob.goto_default()
+    rob.moveto([ 0.06742913, -0.37484296, -0.01921846,  1.59462232, -1.56894371,  -0.90682349])
+    rob.camera.capture()
+    rob.camera.capture()
+    ret = rob.center_camera2apriltag()
+    if not ret:
         return False
-        
+    d = rob.camera.getATdistance(rob.camera.decoded)
+    rob.move2x(0.3 - d)
+    cp = rob.get_camera_position()
+    rob.mvz(cp.pos[2])
+    rob.set_orientation()
+    rob.grab()
+    rob.robot.bump(x=-0.2, backoff=0.05)
+    rob.move2z(0.05)
+    rob.move2x(-0.105)
+    rob.rotz(90)
+    rob.move2y(-0.04)
+    rob.move2z(-0.04)
+    rob.robot.bump(y=0.1, backoff=0.02)
+    rob.move2z(0.04)
+    rob.move2y(0.032)
+    rob.robot.bump(z=-0.1, backoff=0.02)
