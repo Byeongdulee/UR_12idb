@@ -92,7 +92,7 @@ __license__ = "LGPLv3"
 # 543, 0.19
 # 587, 0.14
 
-def decodeAT(img=[], F=[]):
+def decodeAT(img=[], F=[], cam_f, imgH, imgV):
     at = Detector(families='tag36h11',
                         nthreads=1,
                         quad_decimate=1.0,
@@ -104,7 +104,7 @@ def decodeAT(img=[], F=[]):
         print("empty image")
         return
     if len(F)==0:    
-        F = [[camera_f, 0, default_imgH/2], [0, camera_f, default_imgV/2], [0, 0, 1]]
+        F = [[cam_f, 0, imgH/2], [0, cam_f, imgV/2], [0, 0, 1]]
     fx = F[0][0]
     fy = F[1][1]
     cx = F[0][2]
@@ -212,14 +212,14 @@ class camera(object):
         self.image = pilImage
         self.imgH = pilImage.shape[1]
         self.imgV = pilImage.shape[0]
+        self.camera_f = camera_f/default_imgH*self.imgH
         return ret, pilImage
 
     def decodeAT(self):
         r = decodeAT(self.image, self.intrinsic_mtx)
-        self.camera_f = camera_f/default_imgH*self.image.shape[1]
         if type(self.intrinsic_mtx) is not np.ndarray:
             if len(self.intrinsic_mtx)==0:
-                K = np.array([[camera_f, 0, default_imgH/2], [0, camera_f, default_imgV/2], [0, 0, 1]])
+                K = np.array([[self.camera_f, 0, self.imgH/2], [0, self.camera_f, self.imgV/2], [0, 0, 1]])
             else:
                 K = np.array(self.intrinsic_mtx)
         else:
@@ -249,7 +249,7 @@ class camera(object):
             y1 = pgpnts[ind2][1]
             d = math.sqrt((x0-x1)**2+(y0-y1)**2)
             dist.append(d)
-        self.QRdistance = self.AT_physical_size/np.mean(dist)*camera_f/default_imgH*self.imgH
+        self.QRdistance = self.AT_physical_size/np.mean(dist)*self.camera_f
         self.QRposition = r.center
         self.QRsize = self.AT_physical_size
         return self.QRdistance
@@ -257,7 +257,7 @@ class camera(object):
     def H2RT(self, H):
         # https://medium.com/analytics-vidhya/using-homography-for-pose-estimation-in-opencv-a7215f260fdd
         if len(self.intrinsic_mtx)==0:
-            self.intrinsic_mtx = [[camera_f, 0, default_imgH/2], [0, camera_f, default_imgV/2], [0, 0, 1]]
+            self.intrinsic_mtx = [[self.camera_f, 0, self.imgH/2], [0, self.camera_f, self.imgV/2], [0, 0, 1]]
         K = self.intrinsic_mtx
         H = H.T
         h1 = H[0]
