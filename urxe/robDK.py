@@ -2,7 +2,6 @@
 from PyQt5.QtCore import QObject
 import math3d as m3d
 import math
-
 from robodk.robolink import Robolink, ITEM_TYPE_ROBOT     # RoboDK API
 import robodk.robomath as rkmath      # Robot toolbox
 
@@ -28,10 +27,10 @@ def ind2sub(ind, array_shape):
 def sub2ind(rows, cols, array_shape):
     return rows*array_shape[1] + cols
 
+
 class roboUR3(QObject):
     # unit of position vector : meter.
     # unit of angles: degree
-    
     RDK = Robolink()
     robot = RDK.Item('', ITEM_TYPE_ROBOT)
     #target = RDK.Item('Target 3')

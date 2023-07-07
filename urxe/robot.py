@@ -5,11 +5,11 @@ text_file_path = os.path.dirname(os.path.abspath(__file__))
 # https://github.com/Byeongdulee/python-urx
 sys.path.append(os.path.join(text_file_path, '..', '..', 'python-urx'))
 
-with open(os.path.join(text_file_path, '../urscripts', 'checkdistance.script'), 'r') as file:
+with open(os.path.join(text_file_path, 'urscripts', 'checkdistance.script'), 'r') as file:
     CheckdistanceScript = file.read()
 
 from urx import robot, urrobot, robotiq_two_finger_gripper
-import ursecmon
+from urxe import ursecmon
 #import urmon_parser
 #import urrtde
 import math3d as m3d
@@ -106,32 +106,6 @@ class Robot(robot.Robot):
         if wait:
             while self.is_program_running():
                 time.sleep(0.01)
-
-# class URScript(urscript.URScript):
-#     def __init__(self):
-#         super().__init__(self)
-    
-#     def _socket_get_var2var(self, var, varout, socket_name, prefix = ''):
-#         msg = "{}{} = socket_get_var(\"{}\",\"{}\")".format(prefix, varout, var, socket_name)
-#         self.add_line_to_program(msg)
-
-#     def _socket_send_byte(self, byte, socket_name):
-#         msg = "socket_send_byte(\"{}\",\"{}\")".format(str(byte), socket_name)  # noqa
-#         self.add_line_to_program(msg)
-#         self._sync()
-
-# class URrobot(urrobot.URRobot):
-#     def __init__(self, host):
-#         FORMAT = '%(message)s'
-#         logging.basicConfig(format=FORMAT)
-#         self.logger = logging.getLogger("myrobot")
-
-#         self.host = host
-#         self.csys = None
-#         self.secmon = ursecmon.SecondaryMonitor(self.host)  # data from robot at 10Hz
-#         self.rtmon = urrtde.URRTMonitor(self.host)
-#         self.rtmon.start()
-
 
 class RobotiqScript12ID(robotiq_two_finger_gripper.RobotiqScript): 
     # should make a variable named "rq_pos" on the teach pendent to be able to run this.

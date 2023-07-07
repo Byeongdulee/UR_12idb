@@ -8,7 +8,7 @@ I made this read-only. If you need to send a program, use the secondary monitor.
 
 import logging
 import socket
-from .urmon_parser import ParserUtils 
+from urxe.urmon_parser import ParserUtils 
 
 __author__ = "Byeongdu Lee, <blee@anl.gov>, Argonne National Laboratory"
 __license__ = "LGPLv3"

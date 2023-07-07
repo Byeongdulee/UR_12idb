@@ -19,11 +19,11 @@ import math3d as m3d
 import logging
 import math
 #import time
-from robot import Robotiq_Two_Finger_Gripper
-from robot import Robot
-from urdashboard import dashboard
-from urcamera import camera
-import robot
+from urxe.robot import Robotiq_Two_Finger_Gripper
+from urxe.robot import Robot
+from urxe.urdashboard import dashboard
+from urxe.urcamera import camera
+from urxe import robot
 
 
 #from urrobot import URRobot

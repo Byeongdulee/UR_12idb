@@ -17,9 +17,9 @@ import numpy as np
 
 import math3d as m3d
 
-__author__ = "Morten Lind, Olivier Roulet-Dubonnet"
-__copyright__ = "Copyright 2011, NTNU/SINTEF Raufoss Manufacturing AS"
-__credits__ = ["Morten Lind, Olivier Roulet-Dubonnet"]
+__author__ = "Byeongdu Lee"
+__copyright__ = "Copyright 2022, Argonne National Laboratory"
+__credits__ = ["Updated urx by Morten Lind, Olivier Roulet-Dubonnet for a newer OS"]
 __license__ = "LGPLv3"
 
 

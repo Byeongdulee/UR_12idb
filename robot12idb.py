@@ -5,8 +5,8 @@ import os
 #sys.path.append(r"UR_12ID")
 #sys.path.append(r"UR_12ID/ini")
 text_file_path = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.join(text_file_path, 'UR12ID'))
-sys.path.append(os.path.join(text_file_path, 'UR12ID/ini'))
+#sys.path.append(os.path.join(text_file_path, 'UR12ID'))
+sys.path.append(os.path.join(text_file_path, 'ini'))
 sys.path.append(os.path.join(text_file_path, '..'))
 
 QRPVavailable = False
@@ -39,10 +39,10 @@ class RobotException(Exception):
     pass
 
 # UR3
-import robUR3
-from urcamera import Detection as atDET
-from urcamera import cal_AT2pose
-import camera_tools as ctool
+from urxe import robUR3
+from urxe.urcamera import Detection as atDET
+from urxe.urcamera import cal_AT2pose
+import camera_tools as cameratools
 
 ######## How to use m3d.
 # To rotate in the TCP frame,
@@ -1034,7 +1034,7 @@ class UR3(robUR3.UR):
 
     def tilt_align(self):
         if b'Follow me' in self.camera.QRdata:
-            h, pd, ang, tilt = ctool.decodefollowme(self)
+            h, pd, ang, tilt = cameratools.decodefollowme(self)
             tilt = np.array(tilt)
             #height = 0.3796914766079877
             print(f"'Follow me' is found at {h}m below.")
@@ -1047,9 +1047,9 @@ class UR3(robUR3.UR):
                     self.tilt_over(h, ang=signN*5, dir = [1, 0])
                 if East != 0:
                     self.tilt_over(h, ang=signE*5, dir = [0, 1])
-                h, pd, ang, tilt = ctool.decodefollowme(self)
+                h, pd, ang, tilt = cameratools.decodefollowme(self)
                 while h==0:
-                    h, pd, ang, tilt = ctool.decodefollowme(self)
+                    h, pd, ang, tilt = cameratools.decodefollowme(self)
                 tilt = np.array(tilt)
 
     def relocate_camera(self, distance2go = 0.2):

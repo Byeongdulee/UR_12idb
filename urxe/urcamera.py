@@ -21,7 +21,7 @@ try:
 except ImportError:
     ISAPRILTAGS = False
 import os
-img_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images')
+img_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'images')
 
 imgH = 1280
 imgV = 720

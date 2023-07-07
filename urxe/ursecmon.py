@@ -14,12 +14,12 @@ from threading import Thread, Condition, Lock
 import logging
 import socket
 import time
-from urmon_parser import ParsingException, ParserUtils 
-from urdashboard import dashboard
+from urxe.urmon_parser import ParsingException, ParserUtils 
+from urxe.urdashboard import dashboard
 
-__author__ = "Olivier Roulet-Dubonnet"
-__copyright__ = "Copyright 2011-2013, Sintef Raufoss Manufacturing"
-__credits__ = ["Olivier Roulet-Dubonnet"]
+__author__ = "Byeongdu Lee"
+__copyright__ = "Argonne National Laboratory"
+__credits__ = ["Updated urx by Olivier Roulet-Dubonnet for a newer UR os"]
 __license__ = "LGPLv3"
 
 
