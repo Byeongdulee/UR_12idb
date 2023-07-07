@@ -65,7 +65,7 @@ https://github.com/Byeongdulee/python-urx
 
 # At the beamline 12IDB
 The UR3 robot at APS 12IDB equips with a Robotiq gripper and a Robotiq wrist camera. 
-The robotiq camera comes with a long USB cable that goes to the UR control computer. In order to use this camera using python, you must plug the USB cable into the computer that runs this python code and then a separate 24V power is needed.
+The robotiq camera comes with a long USB cable that goes to the UR control computer. This USB cable is for both gripper and camera. This USB can be connected to a PC that runs this python code, which will allow you to access all camera tools such as focusing, higher resolution images, and so on. To make this work, a separate 24V power is needed for the camera. Also, for the gripper to work, its M8 connector needs to be connected to the tool communication M8 connector, which may require a non-electric mount between camera and UR tool flange.
 See camera_tools.py for examples.
 ```python
 > import robot12idb as rb
