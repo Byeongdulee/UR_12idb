@@ -203,6 +203,7 @@ class camera(object):
                 #tkinter format image
                 imageData = np.asarray(bytearray(resp), dtype="uint8")
                 pilImage=Image.open(io.BytesIO(imageData))
+                pilImage = np.asarray(pilImage)
                 ret = True
         else:
             ret, pilImage = self.vidcap.read()
