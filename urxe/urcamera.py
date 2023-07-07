@@ -27,8 +27,8 @@ except ImportError:
 import os
 img_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'images')
 
-imgH = 1280
-imgV = 720
+default_imgH = 1280
+default_imgV = 720
 focus_threshold = 510
 QRsavSize = 0.023 # 1QR 'sav' size = ~23mm (about 1mm error)
 AT_size = 0.021
@@ -104,7 +104,7 @@ def decodeAT(img=[], F=[]):
         print("empty image")
         return
     if len(F)==0:    
-        F = [[camera_f, 0, imgH/2], [0, camera_f, imgV/2], [0, 0, 1]]
+        F = [[camera_f, 0, default_imgH/2], [0, camera_f, default_imgV/2], [0, 0, 1]]
     fx = F[0][0]
     fy = F[1][1]
     cx = F[0][2]
@@ -132,8 +132,8 @@ class camera(object):
         self.IP = IP
         self.device = device
         self.camera_f = camera_f
-        self.imgH = imgH
-        self.imgV = imgV
+        self.imgH = default_imgH
+        self.imgV = default_imgV
         self.QR_physical_size = QRsavSize
         self.AT_physical_size = apriltagsize
         self.intrinsic_mtx = []
@@ -143,8 +143,8 @@ class camera(object):
             if not vidcap.isOpened():
                 print("Cannot open camera {}".format(self.device))
                 exit()
-            vidcap.set(cv2.CAP_PROP_FRAME_WIDTH, imgH)
-            vidcap.set(cv2.CAP_PROP_FRAME_HEIGHT, imgV)
+            vidcap.set(cv2.CAP_PROP_FRAME_WIDTH, default_imgH)
+            vidcap.set(cv2.CAP_PROP_FRAME_HEIGHT, default_imgV)
             self.vidcap = vidcap
             self.focus(520)
     
@@ -210,13 +210,16 @@ class camera(object):
             if not ret:
                 print("Fail to capture camera.")
         self.image = pilImage
+        self.imgH = pilImage.shape[1]
+        self.imgV = pilImage.shape[0]
         return ret, pilImage
 
     def decodeAT(self):
         r = decodeAT(self.image, self.intrinsic_mtx)
+        self.camera_f = camera_f/default_imgH*self.image.shape[1]
         if type(self.intrinsic_mtx) is not np.ndarray:
             if len(self.intrinsic_mtx)==0:
-                K = np.array([[camera_f, 0, imgH/2], [0, camera_f, imgV/2], [0, 0, 1]])
+                K = np.array([[camera_f, 0, default_imgH/2], [0, camera_f, default_imgV/2], [0, 0, 1]])
             else:
                 K = np.array(self.intrinsic_mtx)
         else:
@@ -246,7 +249,7 @@ class camera(object):
             y1 = pgpnts[ind2][1]
             d = math.sqrt((x0-x1)**2+(y0-y1)**2)
             dist.append(d)
-        self.QRdistance = self.AT_physical_size/np.mean(dist)*self.camera_f
+        self.QRdistance = self.AT_physical_size/np.mean(dist)*camera_f/default_imgH*self.imgH
         self.QRposition = r.center
         self.QRsize = self.AT_physical_size
         return self.QRdistance
@@ -254,7 +257,7 @@ class camera(object):
     def H2RT(self, H):
         # https://medium.com/analytics-vidhya/using-homography-for-pose-estimation-in-opencv-a7215f260fdd
         if len(self.intrinsic_mtx)==0:
-            self.intrinsic_mtx = [[camera_f, 0, imgH/2], [0, camera_f, imgV/2], [0, 0, 1]]
+            self.intrinsic_mtx = [[camera_f, 0, default_imgH/2], [0, camera_f, default_imgV/2], [0, 0, 1]]
         K = self.intrinsic_mtx
         H = H.T
         h1 = H[0]
@@ -270,7 +273,7 @@ class camera(object):
         R = np.reshape(R, (3, 3))
         return R, T
 
-    def decode(self, p0in=(0,0), p1in=(0,0), imgwidth=imgH, imgheight=imgV, color = (0, 0, 255), thickness = 1):
+    def decode(self, p0in=(0,0), p1in=(0,0), imgwidth=default_imgH, imgheight=default_imgV, color = (0, 0, 255), thickness = 1):
         opencvimage = np.array(self.image)
         imgdata = opencvimage[:,:,::-1].copy()
         QRdata = decodeQR(imgdata)
@@ -328,7 +331,7 @@ class camera(object):
         self.QRcoordinates = pgpnts
         return data, rectcoord, qrsize, dist
 
-    def decode2QR(self, p0in=(0,0), p1in=(0,0), imgwidth=imgH, imgheight=imgV, color = (0, 0, 255), thickness = 1):
+    def decode2QR(self, p0in=(0,0), p1in=(0,0), imgwidth=default_imgH, imgheight=default_imgV, color = (0, 0, 255), thickness = 1):
         #imgdata = self.image
         opencvimage = np.array(self.image)
         imgdata = opencvimage[:,:,::-1].copy()
