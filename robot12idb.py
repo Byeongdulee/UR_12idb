@@ -39,7 +39,7 @@ class RobotException(Exception):
     pass
 
 # UR3
-from urxe import robUR3
+from urxe import robUR
 from urxe.urcamera import Detection as atDET
 from urxe.urcamera import cal_AT2pose
 import camera_tools as cameratools
@@ -60,7 +60,7 @@ def ind2sub(ind, array_shape):
 def sub2ind(rows, cols, array_shape):
     return rows*array_shape[1] + cols
 
-class UR3(robUR3.UR):
+class UR3(robUR.UR):
     # unit of position vector : meter.
     sigFinger = pyqtSignal(str)
     sigMoving = pyqtSignal(bool)
