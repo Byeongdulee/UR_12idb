@@ -18,6 +18,7 @@ python setup.py install
 Or, you can use without installation as
 ```sh
 cd UR_12idb
+python
 ```
 ```python
 > import urxe
