@@ -474,7 +474,7 @@ def showcamera(rob, obj_distance=0.12):
             #t.join()
         if key == 27:
             break
-        foc = rob.camera.get_foc()
+#        foc = rob.camera.get_foc()
     #    print("The current focus value is: {}".format(foc))
         time.sleep(0.1)
     cv2.destroyAllWindows()
