@@ -451,6 +451,8 @@ def showcamera(rob, obj_distance=0.12):
         if key == 112: #p
             #print(QRcode)
             print(r.homography)
+            print(f"Center position is at [{QRpos}].")
+            print(f"Distance from camera is {QRdist} m.")
         if key == 116: #t
             rob.tilt_camera_down()
         if key == 77: #M
