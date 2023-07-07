@@ -92,7 +92,7 @@ __license__ = "LGPLv3"
 # 543, 0.19
 # 587, 0.14
 
-def decodeAT(img=[], F=[], cam_f, imgH, imgV):
+def decodeAT(img=[], F=[], cam_f=camera_f, imgH=default_imgH, imgV=default_imgV):
     at = Detector(families='tag36h11',
                         nthreads=1,
                         quad_decimate=1.0,
@@ -147,6 +147,9 @@ class camera(object):
             vidcap.set(cv2.CAP_PROP_FRAME_HEIGHT, default_imgV)
             self.vidcap = vidcap
             self.focus(520)
+            self.connectiontype = 'usb'
+        else:
+            self.connectiontype = 'ip'
     
     def scanfocus(self):
         if len(self.IP)>0:
