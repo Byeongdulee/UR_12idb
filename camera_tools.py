@@ -393,21 +393,29 @@ def showcamera(rob, obj_distance=0.12):
         #rob.camera.decode2QR()
         key = cv2.waitKey(20) & 0xFF
         if key == 48:  #0
-            rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,400) #This sets the focus to a value of i
+            if rob.camera.connectiontype == 'usb':
+                rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,400) #This sets the focus to a value of i
         if key == 49: #1
-            rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,450) #This sets the focus to a value of i
+            if rob.camera.connectiontype == 'usb':
+                rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,450) #This sets the focus to a value of i
         if key == 50: #2
-            rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,475) #This sets the focus to a value of i
+            if rob.camera.connectiontype == 'usb':
+                rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,475) #This sets the focus to a value of i
         if key == 51: #3
-            rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,500) #This sets the focus to a value of i
+            if rob.camera.connectiontype == 'usb':
+                rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,500) #This sets the focus to a value of i
         if key == 52:
-            rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,525) #This sets the focus to a value of i
+            if rob.camera.connectiontype == 'usb':
+                rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,525) #This sets the focus to a value of i
         if key == 53:
-            rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,550) #This sets the focus to a value of i
+            if rob.camera.connectiontype == 'usb':
+                rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,550) #This sets the focus to a value of i
         if key == 54:
-            rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,600) #This sets the focus to a value of i
+            if rob.camera.connectiontype == 'usb':
+                rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,600) #This sets the focus to a value of i
         if key == 55:
-            rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,650) #This sets the focus to a value of i
+            if rob.camera.connectiontype == 'usb':
+                rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,650) #This sets the focus to a value of i
         if key == 105: #i
             rob.move_toward_camera(0, north=0.025)
         if key == 106: #j
@@ -429,11 +437,14 @@ def showcamera(rob, obj_distance=0.12):
         if key == 101: #e
             rob.rotate_around_Zaxis_camera(-10)
         if key == 97: #a
-            rob.camera.vidcap.set(cv2.CAP_PROP_AUTOFOCUS,1)
+            if rob.camera.connectiontype == 'usb':
+                rob.camera.vidcap.set(cv2.CAP_PROP_AUTOFOCUS,1)
         if key == 120: #x
-            rob.camera.vidcap.set(cv2.CAP_PROP_AUTOFOCUS,0)
+            if rob.camera.connectiontype == 'usb':
+                rob.camera.vidcap.set(cv2.CAP_PROP_AUTOFOCUS,0)
         if key == 115: #s
-            rob.camera.scanfocus()
+            if rob.camera.connectiontype == 'usb':
+                rob.camera.scanfocus()
         if key == 104: #h
             print("Help:")
             print("  focal point change: 0, 1, 2, .. 7")
