@@ -1172,7 +1172,7 @@ def auto_align_12idb_remote_heater(rob):
     p0 = rob.get_xyz()
     # in-plane tilt tuning..
     print("In the following, tilt around z will be checked.")
-    z_tempdown = v_standoff-0.005
+    z_tempdown = v_standoff+0.005
     rob.move2y(0.015)
     rob.move2z(-z_tempdown)
     barlength = 0.11
@@ -1189,7 +1189,7 @@ def auto_align_12idb_remote_heater(rob):
     rob.rotz(ang)
     rob.move2z(z_tempdown)
     print(f"The heater is tilted by {ang} degree.")
-    rob.moveto(p0[0:3])
+    rob.moveto(p0.tolist()[0:3])
     # move down 
     rob.release()
     rob.move2z(-v_standoff-0.015)
