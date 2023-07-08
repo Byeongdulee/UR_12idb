@@ -132,14 +132,14 @@ class Robotiq_Two_Finger_Gripper(robotiq_two_finger_gripper.Robotiq_Two_Finger_G
                  robot,
                  payload=0.85,
                  speed=255,
-                 force=50,
+                 force=150,
                  socket_host=SOCKET_HOST,
                  socket_port=SOCKET_PORT,
                  socket_name=SOCKET_NAME):
         super().__init__(robot,
-                 payload=0.85,
-                 speed=255,
-                 force=50,
+                 payload=payload,
+                 speed=speed,
+                 force=force,
                  socket_host=socket_host,
                  socket_port=socket_port,
                  socket_name=socket_name)
