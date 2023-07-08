@@ -1149,7 +1149,7 @@ def auto_align_12idb_remote_heater(rob):
     rob.grab()
     rob.robot.bump(x=-0.2, backoff=0.05)
     rob.move2z(0.05)
-    rob.move2x(-0.105)
+    rob.move2x(-0.115)
     rob.rotz(-90)
     rob.move2y(-0.04)
     rob.move2z(-0.04)
