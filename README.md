@@ -47,28 +47,52 @@ https://github.com/Byeongdulee/python-urx
 ```python
 > from urxe import robUR
 > rob = robUR.UR("164.54.xxx.xxx") 
+```
+Translations
+```python
 > rob.move2z(0.1) # this will move rob along z by 0.1 meter
 > rob.mvz(0.1) # this will move rob to z=0.1 position
 > rob.move2zTCP(0.1) # this will move rob along the TCP z coordinate by 0.1 meter
 > rob.moveto([0.1, 0.2, 0]) # move the tcp to the position in the base coordinate
+```
+Rotations
+```python
 > rob.rotz(30, coordinate='tcp') # rotate by 30 degree around the TCP z coordinate
 > rob.rotz(30, coordinate='base') # rotate by 30 degree around the base z coordinate
 > rob.rotz(30, coordinate='camera') # rotate by 30 degree around the camera z coordinate (view direction)
 > rob.rotate([1, 1, 1], 30) # roate around the <1,1,1> direction in the TCP coordinate by 30 degree 
 > rob.rotate_ref([1, 0, 1], [0.1, 0.1, 0.1], 30) # roate around the position [0.1, 0.1, 0.1] in the TCP coordinate by 30 degree around the <1,0,1> vector in TCP coordinate. 
+```
+Orientations
+```python
 > rob.get_euler() # get an euler angle
+> rob.set_orientation() # Z aligning the robot.
+```
+UR script programs
+```python
 > rob.measureheight() # let the arm move along z direction until it bumps to a surface.
 > rob.robot.bump(x=0.1, backoff=0.01) # let the arm move along +x until it bumps to a surface. Once it bumps, it will back off opposite direction by backoff value
+```
+Gripper
+```python
 > rob.activate_gripper() 
 > rob.grab()
 > rob.loosen() # or use rob.release(). To use this function, you will need to define a variable named 'rq_pos' in the teach pendent.
+```
+Camera tools
+```python
+> rob.camera.capture() # capture an image
+> rob.capture_camera() # capture an image and save it with position as filename.
+> rob.move_toward_camera(value, north=0, east=0.01) # move along the camera axis, north, and east direction.
+> rob.roll_around_camera(value, distance, dir='y') # rotate around the object at the distance around the tcp's y axis by value. The direction can be only x or y.
 > rob.tweak_around_camera_axis(30)
+> rob.fingertip2camera() # bring the finger tip to camera position and having Z aligned.
 ```
 
 # At the beamline 12IDB
 The UR3 robot at APS 12IDB equips with a Robotiq gripper and a Robotiq wrist camera. 
-The robotiq camera comes with a long USB cable that goes to the UR control computer. This USB cable is for both gripper and camera. This USB can be connected to a PC that runs this python code, which will allow you to access all camera tools such as focusing, higher resolution images, and so on. To make this work, a separate 24V power is needed for the camera. Also, for the gripper to work, its M8 connector needs to be connected to the tool communication M8 connector, which may require a non-electric mount between camera and UR tool flange.
-See camera_tools.py for examples.
+The robotiq camera comes with a long USB cable that goes to the UR control computer. This USB cable is for both gripper and camera. This is a default configuration of urxe. You can move the UR robot with watching the camera feed.
+
 ```python
 > import robot12idb as rb
 > rob = rb.UR3()
@@ -76,8 +100,11 @@ See camera_tools.py for examples.
 ```
 It will pop up a camera feed window. Press "h" key for help.
 
+## Direct control of the wrist camera
+The USB cable can be connected to a PC that runs this python code, which will allow you to access the camera as a webcam. Then, you can use all camera functions such as focusing, higher resolution images, and so on. To make this work, a separate 24V power is needed for the camera. Also, for the gripper to work, its M8 connector needs to be connected to the tool communication M8 connector, which may require a non-electric mount between camera and UR tool flange.
+See camera_tools.py for examples.
 
-When you don't use the 12idb robot, define yours without a camera.
+You can configure it without a camera.
 ```python
 > from urxe import robUR
 > rob = robUR.UR("164.54.xxx.xxx", cameratype=0) 

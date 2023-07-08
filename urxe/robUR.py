@@ -64,7 +64,7 @@ class UR(QObject):
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
     camtcp = [0, 0.04, 0.015, -math.pi/180*30, 0, 0]
 
-    def __init__(self, name = 'UR3', fingertype=1, cameratype=0):
+    def __init__(self, name = 'UR3', fingertype=1, cameratype=1):
         # fingertype:
         #   0: No finger
         #   1: Robotiq finger
