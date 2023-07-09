@@ -534,7 +534,9 @@ if __name__ == "__main__":
         import robodk.robomath as rkmath
         rob = roboUR3()
     else:
-        rob = UR(sys.argv[1])
+#        rob = UR(sys.argv[1])
+        import robot12idb as rb
+        rob = rb.UR(sys.argv[1])
     a = tweakRobot(rob)
     app.exec_()
     rob.terminate()
