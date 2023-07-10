@@ -45,6 +45,8 @@ from urxe.urcamera import cal_AT2pose
 import camera_tools as cameratools
 april_tag_size = {'heater': 0.0075}
 
+
+
 ######## How to use m3d.
 # To rotate in the TCP frame,
 # trans = self.robot.get_pose()  # here trans represents the transformed TCP coordinate.
@@ -72,6 +74,7 @@ class UR3(robUR.UR):
     #Waypointmagup_q=[5.192646026611328, -0.6902674001506348, 0.557411019002096, -1.440483884220459, -1.5736210981952112, -1.0272372404681605]
     Waypointmagup_q = [3.915731906890869, -1.0986860555461426, 1.227795426045553, -1.702268739739889, -1.5722954908954065, 0.7979311943054199]
     Waypoint_QR_p = [ 2.06744440e-01,  2.35091449e-01,  1.53515533e-01,  2.88421769e+00, -1.24519515e+00, -3.20548384e-05]
+    Waypoint_camera4heater = [ 0.06742913, -0.37484296, -0.01921846,  1.59462232, -1.56894371,  -0.90682349]
     _TCP2CAMdistance = 0.12
 #    tcp = [0.0,0.0,0.167,0.0,0.0,0.0]
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
@@ -1133,10 +1136,19 @@ class UR3(robUR.UR):
         print(f"Cannot find an april tag in the camera feed.")
         return False        
 
+
 def auto_align_12idb_remote_heater(rob):
+    
+    dist2ATtag = 0.3
+    barlength = 0.11
+    gripper_width = 0.02
+
+    # starting the procedure from the default position...
     rob.goto_default()
+    print("")
+    print("**************************")
     print(f"Camera will point at the april tag on the reference frame.")
-    rob.moveto([ 0.06742913, -0.37484296, -0.01921846,  1.59462232, -1.56894371,  -0.90682349])
+    rob.moveto(rob.Waypoint_camera4heater)
     rob.camera.capture()
     rob.camera.capture()
     ret = rob.center_camera2apriltag()
@@ -1145,19 +1157,32 @@ def auto_align_12idb_remote_heater(rob):
         print("No further alignment.")
         rob.goto_default()
         return False
+    print("")
     print("An april tag is found and centered to the camera feed.")
     d = rob.camera.getATdistance(rob.camera.decoded)
-    print("Camera will be relocated to 0.3m away from the tag.")
-    rob.move2x(0.3 - d)
+    # keep the distance from camera to the april tag.
+    print(f"Camera will be relocated to {dist2ATtag}m away from the tag.")
+    rob.move2x(dist2ATtag - d)
+    # read camera position and Z align the robot arm.
     cp = rob.get_camera_position()
     rob.mvz(cp.pos[2])
     rob.set_orientation()
     rob.grab()
+    print("")
+    print("")
     print("Confirming the distance from the tag by touching.")
     rob.robot.bump(x=-0.2, backoff=0.05)
     rob.move2z(0.05)
-    rob.move2x(-0.115)
+    print("")
+    print("")
+    print("Move to the center of the bar.")
+    rob.move2x(-(barlength/2+0.05+gripper_width/2))
+    print("")
+    print("")
+    print("Rotate the finger.")
     rob.rotz(-90)
+    print("")
+    print("")
     print("Aligning the position along the beam by touching.")
     rob.move2y(-0.04)
     rob.move2z(-0.04)
@@ -1166,16 +1191,18 @@ def auto_align_12idb_remote_heater(rob):
     # go to the center of the heater along the beam direction.
     rob.move2y(0.032)
     # z position fine tuning.
+    print("")
+    print("")
     print("Checking the z position by touching.")
     v_standoff = 0.02
     rob.robot.bump(z=-0.1, backoff=v_standoff)
     p0 = rob.get_xyz()
     # in-plane tilt tuning..
+    print("")
     print("In the following, tilt around z will be checked.")
     z_tempdown = v_standoff+0.005
     rob.move2y(0.015)
     rob.move2z(-z_tempdown)
-    barlength = 0.11
     rob.move2x(barlength/2)
     rob.robot.bump(y=-0.01)
     p1 = rob.get_xyz()
@@ -1188,13 +1215,20 @@ def auto_align_12idb_remote_heater(rob):
     ang = math.atan((p2[1]-p1[1])/barlength)*180/math.pi
     rob.rotz(ang)
     rob.move2z(z_tempdown)
-    print(f"The heater is tilted by {ang} degree.")
+    print("")
+    print(f"The heater is tilted by {ang} degree. Taken into account.")
     rob.moveto(p0.tolist()[0:3])
     # move down 
     rob.release()
     rob.move2z(-v_standoff-0.015)
     rob.set_current_as_sampledown()
     rob.movefingerup_totransport()
+    print("")
+    print("A test run will start in a second.")
+    time.sleep(3)
+    rob.dropofftest()
+    print("Done.")
+    print("")
     print("Ready for returing sample.")
     print("use rob.moveMagazine2FrameN(N) to return the reference frame to the slot N.")
     print("then, rob.returnsample() to transport it.")
