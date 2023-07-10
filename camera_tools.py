@@ -310,7 +310,8 @@ def followhands(rob):
     cv2.destroyAllWindows()
 
 
-def showcamera(rob, obj_distance=0.12):
+def showcamera(rob, codetype = 0, obj_distance=0.12):
+    # codetype ==1 for QR code.
     # obj_distance: distance between the gripper tip to the object. measure using rob.measureheight() function.
     rob.camera.QRdistance = ""
     flipflop = True
@@ -344,26 +345,27 @@ def showcamera(rob, obj_distance=0.12):
 
         # Display 
         isambient = False
-        QRcode = decodeQR(frame)
-        rob.camera.image = frame
-        data, rectcoord, qrsize, dist = rob.camera.decode()
-        if len(data) ==1:
-            if data == b'sav':
-                #print(qrd)
-                isambient = True
-            QRpos = rob.camera.QRposition
-            QRdist = rob.camera.QRdistance
-    #        if len(rob.camera.QRposition)>0:
-    #            QRpos = rob.camera.QRposition
-    #            QRdist = rob.camera.QRdistance
-            if len(QRpos)>0:
-                cv2.putText(frame, "{}: [{:.2f}, {:.2f}]".format("position", QRpos[0],QRpos[1]), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-                try:
-                    cv2.putText(frame, "{}: {:.2f}mm".format("distance", QRdist*1000), (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-                except:
-                    pass
-            if hasattr(rob.camera, 'QRdata'):
-                showQRcode(QRcode, frame)
+        if codetype==1:
+            QRcode = decodeQR(frame)
+            rob.camera.image = frame
+            data, rectcoord, qrsize, dist = rob.camera.decode()
+            if len(data) ==1:
+                if data == b'sav':
+                    #print(qrd)
+                    isambient = True
+                QRpos = rob.camera.QRposition
+                QRdist = rob.camera.QRdistance
+        #        if len(rob.camera.QRposition)>0:
+        #            QRpos = rob.camera.QRposition
+        #            QRdist = rob.camera.QRdistance
+                if len(QRpos)>0:
+                    cv2.putText(frame, "{}: [{:.2f}, {:.2f}]".format("position", QRpos[0],QRpos[1]), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                    try:
+                        cv2.putText(frame, "{}: {:.2f}mm".format("distance", QRdist*1000), (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                    except:
+                        pass
+                if hasattr(rob.camera, 'QRdata'):
+                    showQRcode(QRcode, frame)
         gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
         r = at.detect(gray)
         if len(r)==1:
