@@ -75,6 +75,7 @@ class UR3(robUR.UR):
     Waypointmagup_q = [3.915731906890869, -1.0986860555461426, 1.227795426045553, -1.702268739739889, -1.5722954908954065, 0.7979311943054199]
     Waypoint_QR_p = [ 2.06744440e-01,  2.35091449e-01,  1.53515533e-01,  2.88421769e+00, -1.24519515e+00, -3.20548384e-05]
     Waypoint_camera4heater = [ 0.06742913, -0.37484296, -0.01921846,  1.59462232, -1.56894371,  -0.90682349]
+    Waypoint_camera4standard = [-0.09136841, -0.37766972,  0.15913981, -1.92979616,  1.92055087, -0.51508574]
     _TCP2CAMdistance = 0.12
 #    tcp = [0.0,0.0,0.167,0.0,0.0,0.0]
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
@@ -1221,6 +1222,41 @@ def auto_align_12idb_remote_heater(rob):
     # move down 
     rob.release()
     rob.move2z(-v_standoff-0.015)
+    rob.set_current_as_sampledown()
+    rob.movefingerup_totransport()
+    print("")
+    print("A test run will start in a second.")
+    time.sleep(3)
+    rob.dropofftest()
+    print("Done.")
+    print("")
+    print("Ready for returing sample.")
+    print("use rob.moveMagazine2FrameN(N) to return the reference frame to the slot N.")
+    print("then, rob.returnsample() to transport it.")
+
+def auto_align_12idb_standard_holder(rob):
+    
+    dist2ATtag = 0.3
+    barlength = 0.11
+    gripper_width = 0.023
+
+    # starting the procedure from the default position...
+    rob.goto_default()
+    print("")
+    print("**************************")
+    print(f"Camera will point at the april tag on the reference frame.")
+    rob.release()
+    rob.moveto(rob.Waypoint_camera4standard)
+    # align with camera
+    rob.rotx(-30, coordinate='camera')
+    rob.move2x(0.04)
+    rob.grab()
+    rob.robot.bump(x=-0.1, backoff=0.005)
+    rob.move2z(0.03)
+    rob.move2x(-1*(gripper_width/2+barlength/2)-0.005)
+    rob.robot.bump(z=-0.1, backoff = 0.005)
+    rob.release()
+    rob.move2z(-0.02-0.005)
     rob.set_current_as_sampledown()
     rob.movefingerup_totransport()
     print("")
