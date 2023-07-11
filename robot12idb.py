@@ -42,6 +42,7 @@ class RobotException(Exception):
 from urxe import robUR
 from urxe.urcamera import Detection as atDET
 from urxe.urcamera import cal_AT2pose
+from urxe import utils
 import camera_tools as cameratools
 april_tag_size = {'heater': 0.0075}
 
@@ -55,13 +56,13 @@ april_tag_size = {'heater': 0.0075}
 
 # Then, trans.orient.rotate_xt(), rotate_yt(), rotate_zt(), or rotate_t(ax, angle)
 
-def ind2sub(ind, array_shape):
-    rows = int(ind / array_shape[1])
-    cols = (int(ind) % array_shape[1]) # or numpy.mod(ind.astype('int'), array_shape[1])
-    return (rows, cols)
+# def ind2sub(ind, array_shape):
+#     rows = int(ind / array_shape[1])
+#     cols = (int(ind) % array_shape[1]) # or numpy.mod(ind.astype('int'), array_shape[1])
+#     return (rows, cols)
 
-def sub2ind(rows, cols, array_shape):
-    return rows*array_shape[1] + cols
+# def sub2ind(rows, cols, array_shape):
+#     return rows*array_shape[1] + cols
 
 class UR3(robUR.UR):
     # unit of position vector : meter.
@@ -539,7 +540,7 @@ class UR3(robUR.UR):
     def moveMagazine2FrameN(self, number):
         self.currentFrame = number
         newN = self.mag_index[number]
-        xN, yN = ind2sub(int(newN), (int(self.numXFrame), int(self.numYFrame)))
+        xN, yN = utils.ind2sub(int(newN), (int(self.numXFrame), int(self.numYFrame)))
         self.set_magazine(xN, yN)
     
     def mountNextFrame(self):
@@ -566,7 +567,7 @@ class UR3(robUR.UR):
 
     def getCurrentFrameNumber(self):
         i, j = self.get_magazine()
-        newN = sub2ind(i, j, (int(self.numXFrame), int(self.numYFrame)))
+        newN = utils.sub2ind(i, j, (int(self.numXFrame), int(self.numYFrame)))
         self.currentFrame = self.mag_index.index(newN)
 
     def pickuptest(self, gap=0):
