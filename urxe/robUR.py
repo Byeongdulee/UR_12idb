@@ -23,7 +23,7 @@ from urxe.robot import Robotiq_Two_Finger_Gripper
 from urxe.robot import Robot
 from urxe.urdashboard import dashboard
 from urxe.urcamera import camera
-from urxe import robot
+from urxe import robot, utils
 
 
 #from urrobot import URRobot
@@ -50,14 +50,6 @@ m3d_Zdown_cameraYm = [[1, 0, 0], [0, -1, 0], [0, 0, -1]]
 
 # Then, trans.orient.rotate_xt(), rotate_yt(), rotate_zt(), or rotate_t(ax, angle)
 
-def ind2sub(ind, array_shape):
-    rows = int(ind / array_shape[1])
-    cols = (int(ind) % array_shape[1]) # or numpy.mod(ind.astype('int'), array_shape[1])
-    return (rows, cols)
-
-def sub2ind(rows, cols, array_shape):
-    return rows*array_shape[1] + cols
-
 class UR(QObject):
     # unit of position vector : meter.
     _TCP2CAMdistance = 0.12
@@ -72,7 +64,7 @@ class UR(QObject):
         #   0: No camera
         #   1: IP camera
         #   2: USB camera
-
+        
         super(UR, self).__init__()
         if '.' in name:
             IP = name
@@ -81,6 +73,8 @@ class UR(QObject):
 
         self.logger = logging.getLogger(IP)
         
+        self.orientation = m3d_Zdown_cameraY
+
         try:
 #            self.robot = urx.Robot(IP)
             self.robot = Robot(IP)
@@ -151,7 +145,7 @@ class UR(QObject):
         # set_orientation(0, -180, 0)
         if len(ang) < 2:
             if len(ang) ==0:
-                orient = m3d.Orientation(m3d_Zdown_cameraY)
+                orient = m3d.Orientation(self.orientation)
             elif len(ang) == 1: 
                 orient = m3d.Orientation(ang[0])
             t = self.robot.get_pose()
@@ -184,6 +178,13 @@ class UR(QObject):
     def is_Z_aligned(self):
         v = self.robot.get_pose()
         vec = v.orient.vec_z
+        if abs(vec[2]) < 0.999:
+            return False
+        else:
+            return True
+
+    def is_camera_facedown(self):
+        vec, _, _ = self.get_camera_vector()
         if abs(vec[2]) < 0.999:
             return False
         else:
@@ -298,6 +299,7 @@ class UR(QObject):
 # tcp : the sample coordinate
 # tool : the reference coordinate of which base is at the robot base
 # camera: the sample coordinate base on the camera.
+    # rotx: where x stands for the tcp x axis. Note that camera is out along the tcp y axis.
     def rotx(self, val, coordinate='tcp', wait=True, acc=0.1, vel=0.3):
         # rotate around X axis by val in degree
         val = val/180*math.pi
@@ -330,6 +332,7 @@ class UR(QObject):
             return self.robot.add_pose_base(t, wait=wait, acc=acc, vel=vel)
         if coordinate == 'camera':
             self.set_tcp(self.camtcp)
+#            m = self.rotate([0, 1, 0], val)
             t = self.robot.get_pose()
             t.orient.rotate_yt(val)
             m = self.robot.set_pose(t, wait=wait, acc=acc, vel=vel)
@@ -366,21 +369,23 @@ class UR(QObject):
             j[i] = j[i] + myang[i]
         self.robot.movej(j)
 
-    def rotate(self, rotaxis, rot_angles, wait=True, acc=0.5, vel=0.5):
+    def rotate(self, rotaxis, rot_angles, coordinate='tcp', wait=True, acc=0.5, vel=0.5):
         # rotate around an axis by a relative amount.
-        # rotpos : center of rotation
-        # rotaxis : rotation axis
+        # rotaxis : rotation axis in the given coordination system.
         # rot_angles: rotation angle in degree
-        t = self.robot.get_pose()
-        #rotaxis = -came*dir[0] + camn*dir[1]
-        t.orient.rotate_t(rotaxis, math.pi/180*rot_angles)
-        # if type(rotpos) == m3d.transform.Transform:
-        #     t.set_pos(rotpos.get_pos())
-        # else:
-        #     t.set_pos(rotpos)
-        # #v = self.robot.get_pose()
-        # #v = v*t # rotate around tool z
-        m = self.robot.set_pose(t, acc=acc, vel=vel, wait=wait, command='movej', threshold=None)
+        # if you want to rotate around the tcp x axis with the tcp [0,0,0] as center:
+        #   rob.rotate([1, 0, 0], 10)
+        # if you want to rotate around the base x axis with the tcp [0,0,0] as center:
+        #   t = rob.robot.get_pose()
+        #   rob.rotate(t.orient.get_vect_x(), 10)
+        if coordinate == 'tcp': # center of rotation is tcp.
+            t = self.robot.get_pose()
+            t.orient.rotate_t(rotaxis, math.pi/180*rot_angles)
+            return self.robot.set_pose(t, acc=acc, vel=vel, wait=wait, command='movej', threshold=None)
+        if coordinate == 'base': # center of rotation is the [0,0,0] of the base.
+            t = m3d.Transform()
+            t.orient.rotate_zt(math.pi/180*rot_angles)
+            return self.robot.add_pose_base(t, wait=wait, acc=acc, vel=vel)
 
     def rotate_ref(self, rotpos, rotaxis, rot_angles, acc=0.5, vel=0.5):
         # rotate around a given TCP position around an axis by a relative amount.
@@ -564,7 +569,7 @@ class UR(QObject):
     def tilt_camera_down(self):
         if not hasattr(self, 'camera'):
             raise NoCameraException('No camera defined.')
-        self.camera2z()
+        self.tilt_xm()
 #     def tilt_camera_down(self):
 # #       make camera face down regardless of the direction of camera.
 #         trans = self.robot.get_pose()
@@ -582,106 +587,113 @@ class UR(QObject):
         if not hasattr(self, 'camera'):
             raise NoCameraException('No camera defined.')
         # have camera on +y axis and tilt down to face floor.
-        val = 30
-        v = self.robot.get_pose()
-        val = val/180*math.pi
-        orient = m3d.Orientation(m3d_Zdown_cameraY)
-        orient.rotate_xt(val)
-        v.orient = orient
+        
+        return self.tilt_ym(val=-30)
+        # v = self.robot.get_pose()
+        # val = val/180*math.pi
+        # orient = m3d.Orientation(m3d_Zdown_cameraY)
+        # orient.rotate_xt(val)
+        # v.orient = orient
 
-        yv = self.robot.get_orientation().get_vec_y()
-        #v.orient.rotate_xb(val)
-        v.pos[1] += -self._TCP2CAMdistance*math.cos(math.pi/6)
-        v.pos[2] -= self._TCP2CAMdistance*math.sin(math.pi/6)
-        m = self.robot.set_pose(v, acc=1, vel=0.5, wait=True, command='movel', threshold=None)
+        # yv = self.robot.get_orientation().get_vec_y()
+        # v.pos[1] += -self._TCP2CAMdistance*math.cos(math.pi/6)
+        # v.pos[2] -= self._TCP2CAMdistance*math.sin(math.pi/6)
+        # m = self.robot.set_pose(v, acc=1, vel=0.5, wait=True, command='movel', threshold=None)
+        # return m
 
-        #if yv[1]<0: # need to rotate camera_back
-        #    m = self.rotz(-90, acc=1, vel=1)
-        #    m = self.rotz(-90, acc=1, vel=1)
-        return m
-        #return self.robot.set_pose(v, acc=0.5, vel=0.5, wait=True, command='movel', threshold=None)
-
-    def tilt_ym(self):
+    def tilt_ym(self, val=30):
         if not hasattr(self, 'camera'):
             raise NoCameraException('No camera defined.')
 
         # have camera on -y axis and tilt down to face floor.
 
-        val = 30
-        v = self.robot.get_pose()
-        val = val/180*math.pi
-        orient = m3d.Orientation(m3d_Zdown_cameraYm)
-        orient.rotate_xt(val)
-        v.orient = orient
-
-        # yv = self.robot.get_orientation().get_vec_y()
-        # val = 30
+        m = self.roty(val, coordinate='camera')
+        return m
         # v = self.robot.get_pose()
         # val = val/180*math.pi
-        # v.orient.rotate_xb(val)
-        v.pos[1] += self._TCP2CAMdistance*math.cos(math.pi/6)
-        v.pos[2] -= self._TCP2CAMdistance*math.sin(math.pi/6)
-        #return self.robot.set_pose(v, acc=0.5, vel=0.5, wait=True, command='movel', threshold=None)
-        m = self.robot.set_pose(v, acc=0.5, vel=0.5, wait=True, command='movel', threshold=None)
-        # if yv[1]>0 and abs(yv[2])<0.001: # need to rotate camera_back
-        #     m = self.rotz(90, acc=1, vel=1)
-        #     m = self.rotz(90, acc=1, vel=1)
-        return m
+        # orient = m3d.Orientation(m3d_Zdown_cameraYm)
+        # orient.rotate_xt(val)
+        # v.orient = orient
 
-    def tilt_xm(self):
+        # v.pos[1] += self._TCP2CAMdistance*math.cos(math.pi/6)
+        # v.pos[2] -= self._TCP2CAMdistance*math.sin(math.pi/6)
+        # m = self.robot.set_pose(v, acc=0.5, vel=0.5, wait=True, command='movel', threshold=None)
+        # return m
+
+    def tilt_xm(self, val=30):
         if not hasattr(self, 'camera'):
             raise NoCameraException('No camera defined.')
 
         # have camera on -x axis and tilt down to face floor.
+        return self.rotx(val, coordinate='camera')
+        # v = self.robot.get_pose()
+        # val = val/180*math.pi
+        # orient = m3d.Orientation(m3d_Zdown_cameraXm)
+        # orient.rotate_xt(val)
+        # v.orient = orient
 
-        val = 30
-        v = self.robot.get_pose()
-        val = val/180*math.pi
-        orient = m3d.Orientation(m3d_Zdown_cameraXm)
-        orient.rotate_xt(val)
-        v.orient = orient
-
-        v.pos[0] += self._TCP2CAMdistance*math.cos(math.pi/6)
-        v.pos[2] -= self._TCP2CAMdistance*math.sin(math.pi/6)
-        return self.robot.set_pose(v, acc=0.5, vel=0.5, wait=True, command='movel', threshold=None)
+        # v.pos[0] += self._TCP2CAMdistance*math.cos(math.pi/6)
+        # v.pos[2] -= self._TCP2CAMdistance*math.sin(math.pi/6)
+        # return self.robot.set_pose(v, acc=0.5, vel=0.5, wait=True, command='movel', threshold=None)
 
     def tilt_x(self):
         if not hasattr(self, 'camera'):
             raise NoCameraException('No camera defined.')
         # have camera on +x axis and tilt down to face floor.
-        val = 30
-        v = self.robot.get_pose()
-        val = val/180*math.pi
-        orient = m3d.Orientation(m3d_Zdown_cameraX)
-        orient.rotate_xt(val)
-        v.orient = orient
-        v.pos[0] += -self._TCP2CAMdistance*math.cos(math.pi/6)
-        v.pos[2] -= self._TCP2CAMdistance*math.sin(math.pi/6)
-        return self.robot.set_pose(v, acc=0.5, vel=0.5, wait=True, command='movel', threshold=None)
+        return self.tilt_xm(val=-30)
+        # v = self.robot.get_pose()
+        # val = val/180*math.pi
+        # orient = m3d.Orientation(m3d_Zdown_cameraX)
+        # orient.rotate_xt(val)
+        # v.orient = orient
+        # v.pos[0] += -self._TCP2CAMdistance*math.cos(math.pi/6)
+        # v.pos[2] -= self._TCP2CAMdistance*math.sin(math.pi/6)
+        # return self.robot.set_pose(v, acc=0.5, vel=0.5, wait=True, command='movel', threshold=None)
 
-    def tilt_back(self):
-        if not hasattr(self, 'camera'):
-            raise NoCameraException('No camera defined.')
-        if self.is_Z_aligned():
-            print("Robot is already Z aligned.")
-            return
-        val = 30
+    def get_tilt_axis(self):
+        # this is for rotation performed with tilt_x, tilt_xm, tilt_y, tilt_ym
+        self.set_tcp(self.camtcp)
         t = self.robot.get_pose()
-        val = val/180*math.pi
-        #t = m3d.Transform()
-        t.orient.rotate_xt(-val)
-        v = t.orient.get_vec_y()
-        #self.robot.add_pose_tool(t, acc=0.5, vel=0.5, wait=True, threshold=None)
-        #t = m3d.Transform()
-        vect = v*self._TCP2CAMdistance*math.cos(val)
-        v = t.orient.get_vec_z()
-        vect = vect-v*self._TCP2CAMdistance*math.sin(val)
-#        vect = [0, self._TCP2CAMdistance, -self._TCP2CAMdistance*math.sin(val)]
-        if not isinstance(vect, m3d.Vector):
-            vect = m3d.Vector(vect)
-        t.pos += vect
-        #print(vect)
-        return self.robot.set_pose(t, acc=0.5, vel=0.5, wait=True, threshold=None)
+        self.set_tcp(self.tcp)
+        x = t.orient.get_vec_x()
+        y = t.orient.get_vec_y()
+        z = t.orient.get_vec_z()
+        print(x)
+        print(y)
+        print(z)
+        if abs(x[2])<0.01 and abs(y[2])<0.01 and abs(z[2])>0.99:
+            return 'xm'
+        if abs(x[2])<0.01 and abs(y[2]-0.866)<0.01 and abs(z[2]+0.5)<0.01:
+            return 'x'
+        if abs(y[2]-0.5)<0.01 and abs(z[2]+0.75)<0.01:
+            if x[2]>0:
+                return 'ym'
+            else:
+                return 'y'                
+        # #if abs(z[2])>0.999:
+        # #    ang = utils.get_angle_vectors(x.array, numpy.asarray(self.orientation[0]))*180/math.pi
+        # #    return [0, 0, 1], ang
+        # if abs(x[2])<0.01:
+        #     y2 = y.copy()
+        #     y2[2] = 0.5
+        #     ang = -1*numpy.sign(y[2])*utils.get_angle_vectors(y, y2)*180/math.pi
+        #     return [1, 0, 0], ang
+        # if abs(y[2]-0.5)<0.01:
+        #     x2 = x.copy()
+        #     x2[2] = 0
+        #     ang = numpy.sign(x[2])*utils.get_angle_vectors(x, x2)*180/math.pi
+        #     return [0, 1, 0], ang
+            
+    def tilt_back(self):
+        ax = self.get_tilt_axis()
+        if ax == 'y':
+            self.tilt_ym()
+        if ax == 'ym':
+            self.tilt_y()
+        if ax == 'x':
+            self.tilt_xm()
+        if ax == 'xm':
+            self.tilt_x()
 
     def move_over_camera(self, distance, acc=0.5, vel=0.5):
         if not hasattr(self, 'camera'):

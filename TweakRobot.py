@@ -195,7 +195,7 @@ class tweakRobot(QMainWindow):
         print("THREAD COMPLETE!")
 
     def camera_downface(self):
-        self.threadrun(self.rob.camera2z)
+        self.threadrun(self.rob.tilt_camera_down)
 
     def ImageUpdateSlot(self, Image):
         self.ui.labelFeed.setPixmap(QtGui.QPixmap.fromImage(Image))
