@@ -108,29 +108,6 @@ def findAT2go(rob):
     rob.camera.capture()
     rob.center_aprilTag()
 
-def align_heater(rob):
-    rob.finger.gripper_activate()
-    rob.set_orientation()
-    rob.tilt_x()
-    rob.bring_QR_to_camera_center()
-    if len(rob.camera.QRposition) ==0:
-        print("No QR code is found. Need to adjust camera position before running this.")
-        rob.tilt_xm()
-        return
-    rob.tilt_xm()
-    rob.rotz(rob.camera.QRtiltangle)
-    rob.grab()
-    #pickupshift(rob)
-    height = rob.measureheight(rob)
-    print(f"Height was {height}")
-    dist = height+0.02
-    print(f"move z down by {dist}")
-    rob.release()
-    rob.move2z(-dist, acc=0.05, vel = 0.05)
-    rob.grab()
-    rob.move2z(dist)
-    print(f"Moved up by {dist}, and the program is done.")
-
 def pickupshift(rob):
     #rob.move2x(0.0005)
     rob.move2y(-0.001)

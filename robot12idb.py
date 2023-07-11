@@ -152,20 +152,21 @@ class UR3(robUR.UR):
         #self.magup_p = magup_p
 
     def camera_face_down(self):
-        pos = self.robot.get_pose()
-        if self.whereisFinger() == "nowhere":
-            self.camera2z()
-        if self.whereisFinger() == 'samplestage':
-            self.tilt_xm()
-        if self.whereisFinger() == 'samplestage2':
-            self.tilt_xm()
-        if self.whereisFinger() == 'magazine':
-            self.camera2z()
-        self.set_tcp(self.camtcp)
-        npos = self.robot.get_pose()
-        pos.orient = npos.orient
-        self.robot.set_pose(pos, vel=0.3,acc=0.2)
-        self.set_tcp(self.tcp)
+        self.tilt_camera_down()
+        # pos = self.robot.get_pose()
+        # if self.whereisFinger() == "nowhere":
+        #     self.camera2z()
+        # if self.whereisFinger() == 'samplestage':
+        #     self.tilt_xm()
+        # if self.whereisFinger() == 'samplestage2':
+        #     self.tilt_xm()
+        # if self.whereisFinger() == 'magazine':
+        #     self.camera2z()
+        # self.set_tcp(self.camtcp)
+        # npos = self.robot.get_pose()
+        # pos.orient = npos.orient
+        # self.robot.set_pose(pos, vel=0.3,acc=0.2)
+        # self.set_tcp(self.tcp)
 
     def set_sampledown2_from_sampledown(self, pos, relative=True):
         if relative == True:
