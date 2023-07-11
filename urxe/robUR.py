@@ -561,10 +561,12 @@ class UR(QObject):
     def camera_face_down(self):
         if not hasattr(self, 'camera'):
             raise NoCameraException('No camera defined.')
-        return self.rotx(30, coordinate='camera')
+        if self.is_Z_aligned():
+            return self.rotx(30, coordinate='camera')
 
     def camera_face_back(self):
-        return self.rotx(-30, coordinate='camera')
+        if self.is_camera_facedown():
+            return self.rotx(-30, coordinate='camera')
 
     def move_over_camera(self, distance, acc=0.5, vel=0.5):
         if not hasattr(self, 'camera'):
