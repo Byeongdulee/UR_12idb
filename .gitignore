@@ -1,2 +1,8 @@
+.gitignore
 .history/
 *.pyc
+build/
+.git/
+dist
+urxe.egg-info/
+__pycache__
