@@ -782,7 +782,7 @@ class UR3(robUR.UR):
             cposz = self.robot.get_pos()
             z = abs(cposz[2] - self.magdn_p.pos[2])-offset
 
-        self.move2z(-z, acc=0.05, vel=0.05, wait=True) # No force measurement, just drop.
+        self.mvr2z(-z, acc=0.05, vel=0.05, wait=True) # No force measurement, just drop.
         self.loosen() # drop sample
         time.sleep(0.1)
         #try:
@@ -1086,8 +1086,8 @@ class UR3(robUR.UR):
         self.robot.set_pose(p, wait=True, acc=0.1, vel=0.2, command="movej")
 
 
-# #        self.move2xTCP(-t[0])
-# #        self.move2yTCP(-t[1])
+# #        self.mvr2xTCP(-t[0])
+# #        self.mvr2zTCP(-t[1])
 #         self.set_tcp(self.tcp)
         return euler, t, p
 
@@ -1148,21 +1148,21 @@ def auto_align_12idb_remote_heater(rob):
     d = rob.camera.getATdistance(rob.camera.decoded)
     # keep the distance from camera to the april tag.
     print(f"Camera will be relocated to {dist2ATtag}m away from the tag.")
-    rob.move2x(dist2ATtag - d)
+    rob.mvr2x(dist2ATtag - d)
     # read camera position and Z align the robot arm.
     cp = rob.get_camera_position()
-    rob.mvz(cp.pos[2])
+    rob.move2z(cp.pos[2])
     rob.set_orientation()
     rob.grab()
     print("")
     print("")
     print("Confirming the distance from the tag by touching.")
     rob.robot.bump(x=-0.2, backoff=0.05)
-    rob.move2z(0.05)
+    rob.mvr2z(0.05)
     print("")
     print("")
     print("Move to the center of the bar.")
-    rob.move2x(-(barlength/2+0.05+gripper_width/2))
+    rob.mvr2x(-(barlength/2+0.05+gripper_width/2))
     print("")
     print("")
     print("Rotate the finger.")
@@ -1170,12 +1170,12 @@ def auto_align_12idb_remote_heater(rob):
     print("")
     print("")
     print("Aligning the position along the beam by touching.")
-    rob.move2y(-0.04)
-    rob.move2z(-0.04)
+    rob.mvr2y(-0.04)
+    rob.mvr2z(-0.04)
     rob.robot.bump(y=0.1, backoff=0.02)
-    rob.move2z(0.04)
+    rob.mvr2z(0.04)
     # go to the center of the heater along the beam direction.
-    rob.move2y(0.032)
+    rob.mvr2y(0.032)
     # z position fine tuning.
     print("")
     print("")
@@ -1187,26 +1187,26 @@ def auto_align_12idb_remote_heater(rob):
     print("")
     print("In the following, tilt around z will be checked.")
     z_tempdown = v_standoff+0.005
-    rob.move2y(0.015)
-    rob.move2z(-z_tempdown)
-    rob.move2x(barlength/2)
+    rob.mvr2y(0.015)
+    rob.mvr2z(-z_tempdown)
+    rob.mvr2x(barlength/2)
     rob.robot.bump(y=-0.01)
     p1 = rob.get_xyz()
-    rob.move2y(0.005)
-    rob.move2x(-barlength)
+    rob.mvr2y(0.005)
+    rob.mvr2x(-barlength)
     rob.robot.bump(y=-0.01)
     p2 = rob.get_xyz()
-    rob.move2y(0.005)
-    rob.move2x(barlength/2)
+    rob.mvr2y(0.005)
+    rob.mvr2x(barlength/2)
     ang = math.atan((p2[1]-p1[1])/barlength)*180/math.pi
     rob.rotz(ang)
-    rob.move2z(z_tempdown)
+    rob.mvr2z(z_tempdown)
     print("")
     print(f"The heater is tilted by {ang} degree. Taken into account.")
     rob.moveto(p0.tolist()[0:3])
     # move down 
     rob.release()
-    rob.move2z(-v_standoff-0.015)
+    rob.mvr2z(-v_standoff-0.015)
     rob.set_current_as_sampledown()
     rob.movefingerup_totransport()
     print("")
@@ -1234,14 +1234,14 @@ def auto_align_12idb_standard_holder(rob):
     rob.moveto(rob.Waypoint_camera4standard)
     # align with camera
     rob.rotx(-30, coordinate='camera')
-    rob.move2x(0.04)
+    rob.mvr2x(0.04)
     rob.grab()
     rob.robot.bump(x=-0.1, backoff=0.005)
-    rob.move2z(0.03)
-    rob.move2x(-1*(gripper_width/2+barlength/2)-0.005)
+    rob.mvr2z(0.03)
+    rob.mvr2x(-1*(gripper_width/2+barlength/2)-0.005)
     rob.robot.bump(z=-0.1, backoff = 0.005)
     rob.release()
-    rob.move2z(-0.02-0.005)
+    rob.mvr2z(-0.02-0.005)
     rob.set_current_as_sampledown()
     rob.movefingerup_totransport()
     print("")

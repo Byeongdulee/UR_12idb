@@ -17,23 +17,23 @@ pos_mag = [-3.89803673e-01, -1.50716439e-01, -3.46071435e-02,  2.26448275e+00,
 
 def test(rob):
     rob.release()
-    rob.move2z(0.1)
+    rob.mvr2z(0.1)
     rob.moveto(pos_sam)
-    rob.move2z(-0.1)
+    rob.mvr2z(-0.1)
     rob.grab()
     fp = rob.finger.get_position()
-    rob.move2z(0.1)
+    rob.mvr2z(0.1)
     rob.moveto(pos_mag, vel=0.1)
     if fp>1: # there is a sample 
         rob.dropsample()
     else:
         rob.release()
-        rob.move2z(-0.1)
+        rob.mvr2z(-0.1)
         rob.grab()
-        rob.move2z(0.1)
+        rob.mvr2z(0.1)
         rob.moveto(pos_sam)
         rob.dropsample()
-    rob.move2z(0.1)
+    rob.mvr2z(0.1)
 
 def variance_of_laplacian(image):
     return cv2.Laplacian(image, cv2.CV_64F).var()
@@ -109,8 +109,8 @@ def findAT2go(rob):
     rob.center_aprilTag()
 
 def pickupshift(rob):
-    #rob.move2x(0.0005)
-    rob.move2y(-0.001)
+    #rob.mvr2x(0.0005)
+    rob.mvr2y(-0.001)
 
 #z direction : -0.011
 #x direction : 0.0025

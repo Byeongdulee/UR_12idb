@@ -322,9 +322,9 @@ class tweakRobot(QMainWindow):
                 print(f"New tcp is {tcp}")
                 return
             if self.ui.Base.isChecked():
-                self.rob.move2x(-val, wait=False)
+                self.rob.mvr2x(-val, wait=False)
             else:
-                self.rob.move2xTCP(-val, wait=False)
+                self.rob.mvr2xTCP(-val, wait=False)
             self.updatepos()
         except TargetReachError:
             QMessageBox.warning(self, "Cannot move further", "The robot cannot be moved in this direction any further.") 
@@ -339,9 +339,9 @@ class tweakRobot(QMainWindow):
                 print(f"New tcp is {tcp}")
                 return
             if self.ui.Base.isChecked():
-                self.rob.move2x(val, wait=False)
+                self.rob.mvr2x(val, wait=False)
             else:
-                self.rob.move2xTCP(val, wait=False)
+                self.rob.mvr2xTCP(val, wait=False)
             self.updatepos()
         except TargetReachError:
             QMessageBox.warning(self, "Cannot move further", "The robot cannot be moved in this direction any further.")
@@ -356,9 +356,9 @@ class tweakRobot(QMainWindow):
                 print(f"New tcp is {tcp}")
                 return
             if self.ui.Base.isChecked():
-                self.rob.move2y(-val, wait=False)
+                self.rob.mvr2y(-val, wait=False)
             else:
-                self.rob.move2yTCP(-val, wait=False)
+                self.rob.mvr2yTCP(-val, wait=False)
             self.updatepos()
         except TargetReachError:
             QMessageBox.warning(self, "Cannot move further", "The robot cannot be moved in this direction any further.")
@@ -373,9 +373,9 @@ class tweakRobot(QMainWindow):
                 print(f"New tcp is {tcp}")
                 return
             if self.ui.Base.isChecked():
-                self.rob.move2y(val, wait=False)
+                self.rob.mvr2y(val, wait=False)
             else:
-                self.rob.move2yTCP(val, wait=False)
+                self.rob.mvr2yTCP(val, wait=False)
             self.updatepos()
         except TargetReachError:
             QMessageBox.warning(self, "Cannot move further", "The robot cannot be moved in this direction any further.")
@@ -390,9 +390,9 @@ class tweakRobot(QMainWindow):
                 print(f"New tcp is {tcp}")
                 return
             if self.ui.Base.isChecked():
-                self.rob.move2z(-val, wait=False)
+                self.rob.mvr2z(-val, wait=False)
             else:
-                self.rob.move2zTCP(-val, wait=False)
+                self.rob.mvr2zTCP(-val, wait=False)
             self.updatepos()
         except TargetReachError:
             QMessageBox.warning(self, "Cannot move further", "The robot cannot be moved in this direction any further.")
@@ -407,9 +407,9 @@ class tweakRobot(QMainWindow):
                 print(f"New tcp is {tcp}")
                 return
             if self.ui.Base.isChecked():
-                self.rob.move2z(val, wait=False)
+                self.rob.mvr2z(val, wait=False)
             else:
-                self.rob.move2zTCP(val, wait=False)
+                self.rob.mvr2zTCP(val, wait=False)
             self.updatepos()
         except TargetReachError:
             QMessageBox.warning(self, "Cannot move further", "The robot cannot be moved in this direction any further.")

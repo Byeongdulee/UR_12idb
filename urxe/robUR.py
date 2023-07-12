@@ -204,45 +204,45 @@ class UR(QObject):
         
 # Linear motions
     # absolute positinng
-    def mvx(self, val, acc=0.5, vel=0.5, wait=True):
+    def move2x(self, val, acc=0.5, vel=0.5, wait=True):
         v = self.get_xyz().tolist()
         v[0] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    def mvy(self, val, acc=0.5, vel=0.5, wait=True):
+    def move2y(self, val, acc=0.5, vel=0.5, wait=True):
         v = self.get_xyz().tolist()
         v[1] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    def mvz(self, val, acc=0.5, vel=0.5, wait=True):
+    def move2z(self, val, acc=0.5, vel=0.5, wait=True):
         v = self.get_xyz().tolist()
         v[2] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    def mvrx(self, val, acc=0.5, vel=0.5, wait=True):
+    def moverx(self, val, acc=0.5, vel=0.5, wait=True):
         v = self.get_xyz().tolist()
         v[3] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    def mvry(self, val, acc=0.5, vel=0.5, wait=True):
+    def movery(self, val, acc=0.5, vel=0.5, wait=True):
         v = self.get_xyz().tolist()
         v[4] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    def mvrz(self, val, acc=0.5, vel=0.5, wait=True):
+    def moverz(self, val, acc=0.5, vel=0.5, wait=True):
         v = self.get_xyz().tolist()
         v[5] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    def mv(self, pos, acc=0.5, vel=0.5, wait=True):
-        v = self.get_xyz().tolist()
-        if pos[0] != None:
-            v[0] = pos[0]
-        if pos[1] != None:
-            v[1] = pos[1]
-        if pos[2] != None:
-            v[2] = pos[2]        
-        self.moveto(v, acc=acc, vel=vel, wait=wait)
+    # def mv(self, pos, acc=0.5, vel=0.5, wait=True):
+    #     v = self.get_xyz().tolist()
+    #     if pos[0] != None:
+    #         v[0] = pos[0]
+    #     if pos[1] != None:
+    #         v[1] = pos[1]
+    #     if pos[2] != None:
+    #         v[2] = pos[2]        
+    #     self.moveto(v, acc=acc, vel=vel, wait=wait)
     
     def movels(self, pos_list, radius = 0.01, acc=0.5, vel=0.5, wait=True):
         " movels([0.1, 0.1, 0.1], [0.2, 0.2, 0.2], [0.2, 0.3, 0.2]], radius=0.1)"
@@ -269,28 +269,28 @@ class UR(QObject):
         return pose
 
 # Relative motion in the base coordinate .
-    def move2x(self, x, acc=0.5, vel=0.5, wait=True):
+    def mvr2x(self, x, acc=0.5, vel=0.5, wait=True):
         # identical to mvrx
         self.robot.translate([x, 0, 0], acc=acc, vel=vel, wait=wait)
         
-    def move2y(self, y, acc=0.5, vel=0.5, wait=True):
+    def mvr2y(self, y, acc=0.5, vel=0.5, wait=True):
         # identical to mvry
         self.robot.translate([0, y, 0], acc=acc, vel=vel, wait=wait)
 
-    def move2z(self, z, acc=0.5, vel=0.5, wait=True):
+    def mvr2z(self, z, acc=0.5, vel=0.5, wait=True):
         # identical to mvrz
         self.robot.translate([0, 0, z], acc=acc, vel=vel, wait=wait)
     
 # Relative motion in the TCP coordinate.
-    def move2xTCP(self, x=0.05, acc=0.5, vel=0.5, wait=True):
+    def mvr2xTCP(self, x=0.05, acc=0.5, vel=0.5, wait=True):
         # relative motion along x based on TCP coordinate.
         self.robot.translate_tool([x, 0, 0], acc=acc, vel=vel, wait=wait)
 
-    def move2yTCP(self, y=0.05, acc=0.5, vel=0.5, wait=True):
+    def mvr2yTCP(self, y=0.05, acc=0.5, vel=0.5, wait=True):
         # relative motion along y based on TCP coordinate.
         self.robot.translate_tool([0, y, 0], acc=acc, vel=vel, wait=wait)
 
-    def move2zTCP(self, z=0.05, acc=0.5, vel=0.5, wait=True):
+    def mvr2zTCP(self, z=0.05, acc=0.5, vel=0.5, wait=True):
         # relative motion along z based on TCP coordinate.
         self.robot.translate_tool([0, 0, z], acc=acc, vel=vel, wait=wait)
 
@@ -446,7 +446,7 @@ class UR(QObject):
         self.robot.bump(z=-1, backoff=back_up)
         v1 = self.get_xyz()
         v = v0[2]-(v1[2]-back_up)
-        self.mvz(v0[2])
+        self.move2z(v0[2])
         #v1 = rob.get_xyz()
         #v = v0-v1
         #print(v0, v1)
