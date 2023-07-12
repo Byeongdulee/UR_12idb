@@ -107,10 +107,10 @@ class Robot(robot.Robot):
             while self.is_program_running():
                 time.sleep(0.01)
 
-class RobotiqScript12ID(robotiq_two_finger_gripper.RobotiqScript): 
+class RobotiqScript(robotiq_two_finger_gripper.RobotiqScript): 
     # should make a variable named "rq_pos" on the teach pendent to be able to run this.
     def __init__(self, host, port, sname):
-       super(RobotiqScript12ID, self).__init__(socket_host=host, socket_port=port, socket_name=sname)
+       super(RobotiqScript, self).__init__(socket_host=host, socket_port=port, socket_name=sname)
 
     def _get_gripper_position(self):
         self._socket_get_var2var(robotiq_two_finger_gripper.POS, 'rq_pos ', self.socket_name, prefix='global ')
@@ -185,7 +185,7 @@ class Robotiq_Two_Finger_Gripper12ID(object):
         """
         Set up a new URScript to communicate with gripper
         """
-        urscript = RobotiqScript12ID(self.socket_host,
+        urscript = RobotiqScript(self.socket_host,
                                     self.socket_port,
                                     self.socket_name)
 
@@ -197,7 +197,7 @@ class Robotiq_Two_Finger_Gripper12ID(object):
         """
         Set up a new URScript to communicate with gripper
         """
-        urscript = RobotiqScript12ID(self.socket_host,
+        urscript = RobotiqScript(self.socket_host,
                                     self.socket_port,
                                     self.socket_name)
         # Wait on activation to avoid USB conflicts
@@ -209,7 +209,7 @@ class Robotiq_Two_Finger_Gripper12ID(object):
         """
         Set up a new URScript to communicate with gripper
         """
-        urscript = RobotiqScript12ID(self.socket_host,
+        urscript = RobotiqScript(self.socket_host,
                                     self.socket_port,
                                     self.socket_name)
 
@@ -283,7 +283,7 @@ class Robotiq_Two_Finger_Gripper12ID(object):
         #print(self.robot.rtmon.state.output_double_register_0)
         
         try:
-            output = (1-data['MasterBoardData']['analogOutput0'])*10
+            output = (data['MasterBoardData']['analogOutput0']*254)/5
         except:
             output = -1
         return output

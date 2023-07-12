@@ -188,29 +188,29 @@ class roboUR3(QObject):
         txyzrxyz[ax] = txyzrxyz[ax] + val*math.pi/180
         self.robot.MoveL(rkmath.TxyzRxyz_2_Pose(txyzrxyz))
 
-    def mvx(self, val):
+    def move2x(self, val):
         self.mvTxyzabs_ax(val*1000, 0)
 
-    def mvy(self, val):
+    def move2y(self, val):
         self.mvTxyzabs_ax(val*1000, 1)
 
-    def mvz(self, val):
+    def move2z(self, val):
         self.mvTxyzabs_ax(val*1000, 2)
 
-    def mvrx(self, val):
+    def move2rx(self, val):
         # val should be in degree.
         self.mvRxyzabs_ax(val, 3)
         # v = self.get_xyz().tolist()
         # v[3] = val
         # self.movel(v)
 
-    def mvry(self, val):
+    def move2ry(self, val):
         self.mvRxyzabs_ax(val, 4)
         # v = self.get_xyz().tolist()
         # v[4] = val
         # self.movel(v)
 
-    def mvrz(self, val):
+    def move2rz(self, val):
         self.mvRxyzabs_ax(val, 5)
         # v = self.get_xyz().tolist()
         # v[5] = val
@@ -260,34 +260,34 @@ class roboUR3(QObject):
             self.robot.MoveL(pose)
 
     # relative move in the base frame.
-    def move2x(self, x):
+    def mvr2x(self, x):
         # identical to mvrx
         self.translate([x, 0, 0], frame='base')
     
-    def move2y(self, y):
+    def mvr2y(self, y):
         # identical to mvry
         self.translate([0, y, 0], frame='base')
 
-    def move2z(self, z):
+    def mvr2z(self, z):
         # identical to mvrz
         self.translate([0, 0, z], frame='base')
     
     # relative positioning in the TCP coordinate.
-    def move2xTCP(self, x=0.05, acc=0.01, vel=0.01, wait=True):
+    def mvr2xTCP(self, x=0.05, acc=0.01, vel=0.01, wait=True):
         # relative motion along x based on TCP coordinate.
         self.translate([x, 0, 0], frame='tcp')
         #p = self.robot.getl()
         #p[0] += x
         #self.robot.movel(p, acc=acc, vel=vel, wait=wait)
 
-    def move2yTCP(self, y=0.05, acc=0.01, vel=0.01, wait=True):
+    def mvr2yTCP(self, y=0.05, acc=0.01, vel=0.01, wait=True):
         # relative motion along y based on TCP coordinate.
         self.translate([0, y, 0], frame='tcp')
         #p = self.robot.getl()
         #p[1] += y
         #self.robot.movel(p, acc=acc, vel=vel, wait=wait)
 
-    def move2zTCP(self, z=0.05, acc=0.01, vel=0.01, wait=True):
+    def mvr2zTCP(self, z=0.05, acc=0.01, vel=0.01, wait=True):
         # relative motion along z based on TCP coordinate.
         self.translate([0, 0, z], frame='tcp')
 #        p = self.robot.getl()

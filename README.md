@@ -53,9 +53,9 @@ https://github.com/Byeongdulee/python-urx
 ```
 Translations
 ```python
-> rob.move2z(0.1) # this will move rob along z by 0.1 meter
-> rob.mvz(0.1) # this will move rob to z=0.1 position
-> rob.move2zTCP(0.1) # this will move rob along the TCP z coordinate by 0.1 meter
+> rob.mvr2z(0.1) # this will move rob along z by 0.1 meter
+> rob.move2z(0.1) # this will move rob to z=0.1 position
+> rob.mvr2zTCP(0.1) # this will move rob along the TCP z coordinate by 0.1 meter
 > rob.moveto([0.1, 0.2, 0]) # move the tcp to the position in the base coordinate
 ```
 Rotations
@@ -81,9 +81,12 @@ Gripper
 > rob.activate_gripper() 
 > rob.grab()
 > rob.loosen() # or use rob.release(). To use this function, you will need to define a variable named 'rq_pos' in the teach pendent.
+> rob.finger.get_position() # gripper position 0 close, 1 for open.
+# For this, urx needs be installed from github.
 ```
 Camera tools
 ```python
+> rob.camera_face_down() # make the camera face down (-Z).
 > rob.camera.capture() # capture an image
 > rob.capture_camera() # capture an image and save it with position as filename.
 > rob.move_toward_camera(value, north=0, east=0.01) # move along the camera axis, north, and east direction.
@@ -98,7 +101,7 @@ Run RoboDK and load your rdk file. An example is found under the robodk_model fo
 ```python
 > from urxe import robDK
 > rob = robDK.roboUR3()
-> rob.move2x(0.1)
+> rob.mvr2x(0.1)
 ```
 This code is not complete, meaning that it does not have all the functions in robUR.py. 
 
@@ -133,7 +136,7 @@ You can configure it without a camera.
 ```python
 > from urxe import robUR
 > rob = robUR.UR("164.54.xxx.xxx", cameratype=0) 
-> rob.move2z(0.1)
+> rob.mvr2z(0.1)
 ```
 
 ## Remote heater operation
