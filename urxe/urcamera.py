@@ -233,7 +233,7 @@ class camera(object):
             pos = np.linalg.inv(K@r.homography*r.pose_t[2])@np.array([r.center[0], r.center[1], 1])
 #            print(r.pose_t.transpose())
 #            print(r.homography)
-            print(pos)
+#            print(pos)
         else:
             r = None
             pos = None
