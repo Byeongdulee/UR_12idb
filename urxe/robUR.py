@@ -19,11 +19,11 @@ import math3d as m3d
 import logging
 import math
 #import time
-from urxe.robot import Robotiq_Two_Finger_Gripper
+from urxe.robot import Robotiq_Two_Finger_Gripper12ID
 from urxe.robot import Robot
 from urxe.urdashboard import dashboard
 from urxe.urcamera import camera
-from urxe import robot, utils
+from urxe import robot, ursecmon
 
 
 #from urrobot import URRobot
@@ -77,10 +77,10 @@ class UR(QObject):
 
         try:
 #            self.robot = urx.Robot(IP)
-            self.robot = Robot(IP, use_rt=True)
+            self.robot = Robot(IP, use_rt=True, urFirm=(5.9))
         except TimeoutError:
             raise RobotException(f'Robot {IP} does not respond.')
-        except robot.urrobot.ursecmon.ProtectiveStopException:
+        except ursecmon.ProtectiveStopException:
             print("Protective stoppped.. Connecting again.")
             self.robot = Robot(IP)
 
@@ -92,7 +92,7 @@ class UR(QObject):
             pass
 
         if fingertype==1:
-            self.finger = Robotiq_Two_Finger_Gripper(self.robot)
+            self.finger = Robotiq_Two_Finger_Gripper12ID(self.robot)
         else:
             pass
 

@@ -58,8 +58,8 @@ class Robot(robot.Robot):
         self.urFirm = (5.9)
         #self.secmon = ursecmon.SecondaryMonitor(self.host)  # data from robot at 10Hz
         #self.rtmon = urrtde.URRTMonitor(self.host)
-        self.rtmon = urrtmon.URRTMonitor(self.host, self.urFirm)
-        self.rtmon.start()
+        #self.rtmon = urrtmon.URRTMonitor(self.host, self.urFirm)
+        #self.rtmon.start()
 
     def calc_position_in_base(self, pos):
         # pos is a coordinate in tcp coordinate.
@@ -110,7 +110,7 @@ class Robot(robot.Robot):
 class RobotiqScript12ID(robotiq_two_finger_gripper.RobotiqScript): 
     # should make a variable named "rq_pos" on the teach pendent to be able to run this.
     def __init__(self, host, port, sname):
-        super(RobotiqScript12ID, self).__init__(socket_host=host, socket_port=port, socket_name=sname)
+       super(RobotiqScript12ID, self).__init__(socket_host=host, socket_port=port, socket_name=sname)
 
     def _get_gripper_position(self):
         self._socket_get_var2var(robotiq_two_finger_gripper.POS, 'rq_pos ', self.socket_name, prefix='global ')
@@ -126,23 +126,16 @@ SOCKET_HOST = "127.0.0.1"
 SOCKET_PORT = 63352
 SOCKET_NAME = "gripper_socket"
 
-class Robotiq_Two_Finger_Gripper(robotiq_two_finger_gripper.Robotiq_Two_Finger_Gripper):
+class Robotiq_Two_Finger_Gripper12ID(object):
 
-    def __init__(self,
-                 robot,
-                 payload=0.85,
-                 speed=255,
-                 force=150,
-                 socket_host=SOCKET_HOST,
-                 socket_port=SOCKET_PORT,
-                 socket_name=SOCKET_NAME):
-        super().__init__(robot,
-                 payload=payload,
-                 speed=speed,
-                 force=force,
-                 socket_host=socket_host,
-                 socket_port=socket_port,
-                 socket_name=socket_name)
+    def __init__(self,robot, payload=0.85, speed=255, force=150, socket_host=SOCKET_HOST,socket_port=SOCKET_PORT, socket_name=SOCKET_NAME):
+        self.robot = robot
+        self.payload = payload
+        self.speed = speed
+        self.force = force
+        self.socket_host = socket_host
+        self.socket_port = socket_port
+        self.socket_name = socket_name
 
     def gripper_action(self, value):
         """
@@ -211,7 +204,39 @@ class Robotiq_Two_Finger_Gripper(robotiq_two_finger_gripper.Robotiq_Two_Finger_G
     #        urscript._sleep(0.1)
 
         return urscript
+    
+    def _get_new_urscript(self):
+        """
+        Set up a new URScript to communicate with gripper
+        """
+        urscript = RobotiqScript12ID(self.socket_host,
+                                    self.socket_port,
+                                    self.socket_name)
 
+        # Set input and output voltage ranges
+        urscript._set_analog_inputrange(0, 0)
+        urscript._set_analog_inputrange(1, 0)
+        urscript._set_analog_inputrange(2, 0)
+        urscript._set_analog_inputrange(3, 0)
+        urscript._set_analog_outputdomain(0, 0)
+        urscript._set_analog_outputdomain(1, 0)
+        urscript._set_tool_voltage(0)
+        urscript._set_runstate_outputs()
+
+        # Set payload, speed and force
+        urscript._set_payload(self.payload)
+        urscript._set_gripper_speed(self.speed)
+        urscript._set_gripper_force(self.force)
+
+        # Initialize the gripper
+        urscript._set_robot_activate()
+        urscript._set_gripper_activate()
+
+        # Wait on activation to avoid USB conflicts
+        urscript._sleep(0.1)
+
+        return urscript
+    
     def gripper_activate(self):
         """
         Activate the gripper to a given value from 0 to 255
@@ -252,11 +277,19 @@ class Robotiq_Two_Finger_Gripper(robotiq_two_finger_gripper.Robotiq_Two_Finger_G
         urscript._sleep(0.1)
         self.robot.send_program(urscript())
     #        time.sleep(1)
-    #        data = self.robot.secmon.get_all_data()
-    #        return data['MasterBoardData']['analogOutput0']
         time.sleep(0.3)
+        data = self.robot.secmon.get_all_data()
+#        print(data['MasterBoardData']['analogOutput0'])
+        #print(self.robot.rtmon.state.output_double_register_0)
+        
         try:
-            output = (1-self.robot.rtmon.state.output_double_register_0/255)*10
+            output = (1-data['MasterBoardData']['analogOutput0'])*10
         except:
             output = -1
         return output
+    
+    def open_gripper(self):
+        self.gripper_action(0)
+
+    def close_gripper(self):
+        self.gripper_action(255)
