@@ -77,7 +77,7 @@ class UR(QObject):
 
         try:
 #            self.robot = urx.Robot(IP)
-            self.robot = Robot(IP)
+            self.robot = Robot(IP, use_rt=True)
         except TimeoutError:
             raise RobotException(f'Robot {IP} does not respond.')
         except robot.urrobot.ursecmon.ProtectiveStopException:
@@ -219,17 +219,17 @@ class UR(QObject):
         v[2] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    def moverx(self, val, acc=0.5, vel=0.5, wait=True):
+    def move2rx(self, val, acc=0.5, vel=0.5, wait=True):
         v = self.get_xyz().tolist()
         v[3] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    def movery(self, val, acc=0.5, vel=0.5, wait=True):
+    def move2ry(self, val, acc=0.5, vel=0.5, wait=True):
         v = self.get_xyz().tolist()
         v[4] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    def moverz(self, val, acc=0.5, vel=0.5, wait=True):
+    def move2rz(self, val, acc=0.5, vel=0.5, wait=True):
         v = self.get_xyz().tolist()
         v[5] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)

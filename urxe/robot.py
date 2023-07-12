@@ -9,7 +9,7 @@ with open(os.path.join(text_file_path, 'urscripts', 'checkdistance.script'), 'r'
     CheckdistanceScript = file.read()
 
 from urx import robot, urrobot, robotiq_two_finger_gripper
-from urxe import ursecmon
+from urxe import ursecmon, urrtmon
 #import urmon_parser
 #import urrtde
 import math3d as m3d
@@ -49,8 +49,8 @@ class URRobot(urrobot.URRobot):
         self.secmon.wait()  # make sure we get data from robot before letting clients access our methods
 
 class Robot(robot.Robot):
-    def __init__(self, host) -> None:
-        URRobot.__init__(self, host, use_rt=False, urFirm=None)
+    def __init__(self, host, use_rt=False, urFirm=None) -> None:
+        URRobot.__init__(self, host, use_rt=use_rt, urFirm=urFirm)
         self.csys = m3d.Transform()
         FORMAT = '%(message)s'
         logging.basicConfig(format=FORMAT)
@@ -58,8 +58,8 @@ class Robot(robot.Robot):
         self.urFirm = (5.9)
         #self.secmon = ursecmon.SecondaryMonitor(self.host)  # data from robot at 10Hz
         #self.rtmon = urrtde.URRTMonitor(self.host)
-        #self.rtmon = urrtmon.URRTMonitor(self.host)
-        #self.rtmon.start()
+        self.rtmon = urrtmon.URRTMonitor(self.host, self.urFirm)
+        self.rtmon.start()
 
     def calc_position_in_base(self, pos):
         # pos is a coordinate in tcp coordinate.
