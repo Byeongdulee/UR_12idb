@@ -19,7 +19,7 @@ import math3d as m3d
 import logging
 import math
 #import time
-from urxe.robot import Robotiq_Two_Finger_Gripper12ID
+from urxe.robot import Robotiq_Two_Finger_Gripper
 from urxe.robot import Robot
 from urxe.urdashboard import dashboard
 from urxe.urcamera import camera
@@ -92,7 +92,7 @@ class UR(QObject):
             pass
 
         if fingertype==1:
-            self.finger = Robotiq_Two_Finger_Gripper12ID(self.robot)
+            self.finger = Robotiq_Two_Finger_Gripper(self.robot)
         else:
             pass
 
