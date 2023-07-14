@@ -147,9 +147,9 @@ class tweakRobot(QMainWindow):
 
     def goback(self):
         if hasattr(self.rob, 'prev_pose'):
-            t = self.rob.robot.get_tcp()
+            t = self.rob.get_tcp()
             self.rob.set_tcp(self.rob.prev_tcp)
-            self.rob.robot.set_pose(self.rob.prev_pose, vel=0.2, acc=0.1)
+            self.rob.set_pose(self.rob.prev_pose, vel=0.2, acc=0.1)
             self.rob.set_tcp(t)
         else:
             print("There was no prev_pose, yet. This only works with AprilTag.")
@@ -316,7 +316,7 @@ class tweakRobot(QMainWindow):
         try:    
             val = 0.001*float(self.ui.Xstep.text())
             if self.ui.AddtoTCP.isChecked():
-                tcp = self.rob.robot.get_tcp()
+                tcp = self.rob.get_tcp()
                 tcp[0]-=val
                 self.rob.set_tcp(tcp)
                 print(f"New tcp is {tcp}")
@@ -333,7 +333,7 @@ class tweakRobot(QMainWindow):
         try:
             val = 0.001*float(self.ui.Xstep.text())
             if self.ui.AddtoTCP.isChecked():
-                tcp = self.rob.robot.get_tcp()
+                tcp = self.rob.get_tcp()
                 tcp[0]+=val
                 self.rob.set_tcp(tcp)
                 print(f"New tcp is {tcp}")
@@ -350,7 +350,7 @@ class tweakRobot(QMainWindow):
         try:
             val = 0.001*float(self.ui.Ystep.text())
             if self.ui.AddtoTCP.isChecked():
-                tcp = self.rob.robot.get_tcp()
+                tcp = self.rob.get_tcp()
                 tcp[1]-=val
                 self.rob.set_tcp(tcp)
                 print(f"New tcp is {tcp}")
@@ -367,7 +367,7 @@ class tweakRobot(QMainWindow):
         try:
             val = 0.001*float(self.ui.Ystep.text())
             if self.ui.AddtoTCP.isChecked():
-                tcp = self.rob.robot.get_tcp()
+                tcp = self.rob.get_tcp()
                 tcp[1]+=val
                 self.rob.set_tcp(tcp)
                 print(f"New tcp is {tcp}")
@@ -384,7 +384,7 @@ class tweakRobot(QMainWindow):
         try:
             val = 0.001*float(self.ui.Zstep.text())
             if self.ui.AddtoTCP.isChecked():
-                tcp = self.rob.robot.get_tcp()
+                tcp = self.rob.get_tcp()
                 tcp[2]-=val
                 self.rob.set_tcp(tcp)
                 print(f"New tcp is {tcp}")
@@ -401,7 +401,7 @@ class tweakRobot(QMainWindow):
         try:
             val = 0.001*float(self.ui.Zstep.text())
             if self.ui.AddtoTCP.isChecked():
-                tcp = self.rob.robot.get_tcp()
+                tcp = self.rob.get_tcp()
                 tcp[2]+=val
                 self.rob.set_tcp(tcp)
                 print(f"New tcp is {tcp}")

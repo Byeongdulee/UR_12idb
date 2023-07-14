@@ -5,9 +5,6 @@ text_file_path = os.path.dirname(os.path.abspath(__file__))
 # https://github.com/Byeongdulee/python-urx
 sys.path.append(os.path.join(text_file_path, '..', '..', 'python-urx'))
 
-with open(os.path.join(text_file_path, 'urscripts', 'checkdistance.script'), 'r') as file:
-    CheckdistanceScript = file.read()
-
 from urx import robot, urrobot, robotiq_two_finger_gripper
 from urxe import ursecmon, urrtmon
 #import urmon_parser
@@ -61,26 +58,6 @@ class Robot(robot.Robot):
         #self.rtmon = urrtmon.URRTMonitor(self.host, self.urFirm)
         #self.rtmon.start()
 
-    def calc_position_in_base(self, pos):
-        # pos is a coordinate in tcp coordinate.
-        # returns a coordinate in the base coordinate.
-        trans = self.get_pose()
-        if not isinstance(pos, m3d.Transform):
-            pos = m3d.Transform([pos[0], pos[1], pos[2], 0, 0, 0])
-        n = pos*trans
-        return n
-
-    def calc_position_in_tool(self, pos):
-        # pos is a coordinate in base coordinate.
-        # returns the coordinate in the tool coordinate.
-        trans = self.get_pose()
-        v = trans.get_pose_vector()
-        trans.invert()
-        if not isinstance(pos, m3d.Transform):
-            pos = m3d.Transform([pos[0], pos[1], pos[2], v[3], v[4], v[5]])
-        n = pos*trans
-        return n
-
     def get_tcp(self):
         pose = self.secmon.get_tcp()
         return pose
@@ -96,16 +73,6 @@ class Robot(robot.Robot):
         while not (np.round(np.array(_tcp), 5) == np.round(np.array(tcp), 5)).all():
             _tcp = self.get_tcp()
 
-    def bump(self, x=0, y=0, z=0, backoff=0, wait=True):
-        #data = CheckdistanceScript
-        data = CheckdistanceScript.replace('__replace__', f'[{x}, {y}, {z}, 0, 0, 0]')
-        data = data.replace('__backoff__', f'{backoff}')
-        self.send_program(data)
-        while not self.is_program_running():
-            time.sleep(0.01)
-        if wait:
-            while self.is_program_running():
-                time.sleep(0.01)
 
 class RobotiqScript(robotiq_two_finger_gripper.RobotiqScript): 
     # should make a variable named "rq_pos" on the teach pendent to be able to run this.

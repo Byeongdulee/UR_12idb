@@ -50,7 +50,7 @@ april_tag_size = {'heater': 0.0075}
 
 ######## How to use m3d.
 # To rotate in the TCP frame,
-# trans = self.robot.get_pose()  # here trans represents the transformed TCP coordinate.
+# trans = self.get_pose()  # here trans represents the transformed TCP coordinate.
 # To rate in the robot base frame,
 # trans = m3d.Transform()  # make a new m3d object, 
 
@@ -160,8 +160,8 @@ class UR3(robUR.UR):
         self.samdn2_p = m3d.Transform(pos)
 
     def set_current_as_sampledownXYonly(self):
-        #self.samdn_p = self.robot.get_pose()
-        newp = self.robot.getl()
+        #self.samdn_p = self.get_pose()
+        newp = self.get_xyz().tolist()
         for i in range(len(newp)):
             if i==2:
                 continue
@@ -176,8 +176,8 @@ class UR3(robUR.UR):
         self.samup_p = m3d.Transform(Waypointup_p)
 
     def set_current_as_sampledown(self):
-        self.samdn_p = self.robot.get_pose()
-        self.pos_samplestage = self.robot.getl()
+        self.samdn_p = self.get_pose()
+        self.pos_samplestage = self.get_xyz().tolist()
 #        self.pos_samplestage = self.samdn_p
         Waypointdown_p = self.pos_samplestage
         Waypointup_p = [Waypointdown_p[0],Waypointdown_p[1],Waypointdown_p[2],
@@ -187,8 +187,8 @@ class UR3(robUR.UR):
         self.samup_p = m3d.Transform(Waypointup_p)
 
     def set_current_as_magazinedown(self):
-        self.magdn_p = self.robot.get_pose()
-        self.pos_sample1 = self.robot.getl()
+        self.magdn_p = self.get_pose()
+        self.pos_sample1 = self.get_xyz().tolist()
         print(f"Position of the first sample on Magazine is {self.pos_sample1}.")
         Waypointmagdn_p = self.pos_sample1
         Waypointmagup_p = [Waypointmagdn_p[0],Waypointmagdn_p[1],Waypointmagdn_p[2],
@@ -307,36 +307,36 @@ class UR3(robUR.UR):
 
     def transport_from_samplestage_up_to_magazine_up(self):
         #try:
-        self.robot.movels([self.path3, self.path2, self.path1],radius=0.01, acc=0.5, vel=0.5)
-        self.robot.movej(self.middl_q, acc=0.5, vel=1)
+        self.movels([self.path3, self.path2, self.path1],radius=0.01, acc=0.5, vel=0.5)
+        self.movej(self.middl_q, acc=0.5, vel=1)
         # inverse kinematics toward the magazine works....
-        self.robot.set_pose(self.magup_p, acc=0.5, vel=1, command='movej')
+        self.set_pose(self.magup_p, acc=0.5, vel=1, command='movej')
         #except ParsingException as ex::
 
     def transport_from_magazine_up_to_QR(self):
-        self.robot.movel(self.QR_p, acc=0.5, vel=1)
+        self.movel(self.QR_p, acc=0.5, vel=1)
 
     def transport_from_sample_up_to_sample2_up(self):
         tmp = self.samup_p.get_pose_vector().tolist()
         tmp2 = self.samdn2_p.get_pose_vector().tolist()
         tmp2[2] = tmp[2]
         self.samup2_p = m3d.Transform(tmp2)
-        self.robot.movel(self.samup2_p, acc=0.5, vel=1)
+        self.movel(self.samup2_p, acc=0.5, vel=1)
 
     def transport_from_sample2_up_to_sample_up(self):
-        self.robot.movel(self.samup_p, acc=0.5, vel=1)
+        self.movel(self.samup_p, acc=0.5, vel=1)
 
     def transport_from_samplestage_up_to_default(self):
-        self.robot.movels([self.samup_p, self.path3, self.path2, self.path1],radius=0.01, acc=0.5, vel=0.5)
-        self.robot.movej(self.middl_q, acc=0.5, vel=1)
+        self.movels([self.samup_p, self.path3, self.path2, self.path1],radius=0.01, acc=0.5, vel=0.5)
+        self.movej(self.middl_q, acc=0.5, vel=1)
 
     def transport_from_magazine_up_to_samplestage_up(self):
-        self.robot.movej(self.middl_q, acc=0.5, vel=1)
-        self.robot.movels([self.path1, self.path2, self.path3, self.samup_p],radius=0.01, acc=0.5, vel=0.5)
+        self.movej(self.middl_q, acc=0.5, vel=1)
+        self.movels([self.path1, self.path2, self.path3, self.samup_p],radius=0.01, acc=0.5, vel=0.5)
 
     def transport_from_default_to_samplestage_up(self):
-#        self.robot.movej(self.middl_q, acc=0.5, vel=0.5)
-        self.robot.movels([self.path1, self.path2, self.path3, self.samup_p],radius=0.01, acc=0.5, vel=0.5)
+#        self.movej(self.middl_q, acc=0.5, vel=0.5)
+        self.movels([self.path1, self.path2, self.path3, self.samup_p],radius=0.01, acc=0.5, vel=0.5)
 
     def picksample(self):
         if self.currentFrame < 0.0:
@@ -347,33 +347,18 @@ class UR3(robUR.UR):
             pass
         self.release()
         self.transfingertomagazine()
-        # # check where the finger is now..
-        # wh = self.whereisFinger()
-        # if wh == 'samplestage':
-        #     self.transport_from_samplestage_up_to_magazine_up()
-        # if wh == ('magazine', 'middle'):
-        #     self.transport_from_default_to_magazine_up()
-        # pos = self.robot.getl()
-        # if (pos[1]>-0.03) and (pos[0]>0.0): # finger is at a quadrant where magazine is.
-        #     if pos[2] < (self.magup_p.pos[2]-0.01):
-        #         self.robot.up(self.magup_p.pos[2]-pos[2], acc=1.4, vel=1.0)
-        # else:
-        #     self.robot.movej(self.middl_q, acc=0.5, vel=0.5)
-
-        # self.robot.set_pose(self.magup_p, acc=0.5, vel=0.5, command='movej')
-
         # going down to pick up sample
         self.sigFinger.emit("Frame %i is picked up.."%self.currentFrame)
         self.pickup()
-        # self.robot.movel(self.magdn_p, acc=0.5, vel=0.5)
+        # self.movel(self.magdn_p, acc=0.5, vel=0.5)
         # self.grab()
-        # self.robot.movel(self.magup_p, acc=0.5, vel=0.5)
+        # self.movel(self.magup_p, acc=0.5, vel=0.5)
         # transport to the sample stage via a middle point
         self.sigFinger.emit("Being transported..")
-#        self.robot.movej(self.middl_q, acc=0.5, vel=1.0) # inverse_kinematics calculation failed.
+#        self.movej(self.middl_q, acc=0.5, vel=1.0) # inverse_kinematics calculation failed.
         #so I have to find out the joint position of middl.
         self.transport_from_magazine_up_to_samplestage_up()
-#        self.robot.movels([self.middl_p, self.samup_p], radius=0.01, acc=0.5, vel=0.5) 
+#        self.movels([self.middl_p, self.samup_p], radius=0.01, acc=0.5, vel=0.5) 
         return 0
 
     def scan_QR_all(self, mysample=[]):
@@ -417,7 +402,7 @@ class UR3(robUR.UR):
             # transport to the sample stage via a middle point
             self.sigFinger.emit("Being transported..")
             self.transport_from_magazine_up_to_QR()
-    #        self.robot.movels([self.middl_p, self.samup_p], radius=0.01, acc=0.5, vel=0.5) 
+    #        self.movels([self.middl_p, self.samup_p], radius=0.01, acc=0.5, vel=0.5) 
             return 0
         else:
             return -1
@@ -455,9 +440,9 @@ class UR3(robUR.UR):
         self.transport_from_samplestage_up_to_default()
         # wait at the middle position for data acquisition
         self.sigFinger.emit("Frame %i is loaded. Waiting for data acquisition.."%self.currentFrame)
-# #        self.robot.movel(self.samup_p, acc=0.5, vel=0.5)
-#         self.robot.movel(self.middl_p, acc=0.5, vel=0.5)
-#         self.robot.movej(self.middl_q, acc=0.5, vel=0.5)
+# #        self.movel(self.samup_p, acc=0.5, vel=0.5)
+#         self.movel(self.middl_p, acc=0.5, vel=0.5)
+#         self.movej(self.middl_q, acc=0.5, vel=0.5)
         try:
             self.sigMoving.emit(False)
         except:
@@ -478,37 +463,23 @@ class UR3(robUR.UR):
         # if self.whereisFinger() == 'magazine':
         #     self.transport_from_magazine_up_to_samplestage_up()
 #        if not self.whereisFinger() in ('samplestage', 'middle'):
-#            self.robot.movej(self.middl_q, acc=0.5, vel=0.5)
-#            self.robot.movel(self.middl_p, acc=1.4, vel=1.0)
+#            self.movej(self.middl_q, acc=0.5, vel=0.5)
+#            self.movel(self.middl_p, acc=1.4, vel=1.0)
         # pick up sample from the sample stage
         self.sigFinger.emit("Returning the sample first..")
-#        self.robot.movels([self.samup_p, self.samdn_p], radius = 0.01, acc=0.5, vel=0.5)
-#        #self.robot.movel(self.samdn_p, acc=0.5, vel=0.5)
+#        self.movels([self.samup_p, self.samdn_p], radius = 0.01, acc=0.5, vel=0.5)
+#        #self.movel(self.samdn_p, acc=0.5, vel=0.5)
 #        self.grab()
-#        self.robot.movel(self.sampup_p, acc=0.5, vel=0.5)
+#        self.movel(self.sampup_p, acc=0.5, vel=0.5)
         self.pickup()
 
         # transport to the magazine via the middle point
         self.sigFinger.emit("Being transported..")
         self.transport_from_samplestage_up_to_magazine_up()
-        # self.robot.movels([self.samup_p, self.middl_p], radius = 0.01, acc=0.5, vel=0.5)
-        # #self.robot.movel(self.middl_p, acc=0.5, vel=0.5)
-        # self.robot.movej(self.middl_q, acc=0.5, vel=0.5)
 
-        # # inverse kinematics toward the magazine works....
-        # self.robot.set_pose(self.magup_p, acc=0.5, vel=0.5, command='movej')
-        
-        #rob.movep(magup_p, acc=0.5, vel=0.5, radius=0.05)
-
-#        self.sigFinger.emit("Returned..")
         val = self.putsampledown(z=0.150, offset=in_offset)
         self.sigFinger.emit("Successfully returned..")
-        # self.robot.down((self.vert_magZ-1.5)/1000, acc=1.4, vel=1.0)
-        # #self.robot.movel(self.magdn_p, acc=1.4, vel=1.0)
-        # self.release()
 
-        # # move up and stop.
-        # self.robot.movel(self.magup_p, acc=1.4, vel=1.0)
 
         self.isSampleOnStage = False
         try:
@@ -562,74 +533,74 @@ class UR3(robUR.UR):
         self.transfingertomagazine()
         # if not self.whereisFinger() == 'magazine':
         #     # go to pick position
-        #     self.robot.movej(self.middl_q, acc=0.5, vel=1.0)
-        #     #self.robot.movels([self.middl_p, self.magup_p], acc=0.5, vel=0.5, radius=0.05)
+        #     self.movej(self.middl_q, acc=0.5, vel=1.0)
+        #     #self.movels([self.middl_p, self.magup_p], acc=0.5, vel=0.5, radius=0.05)
 
-        # self.robot.set_pose(self.magup_p, acc=0.5, vel=0.5, command='movej')
+        # self.set_pose(self.magup_p, acc=0.5, vel=0.5, command='movej')
 
         # going down to pick up sample
         self.pickup()
         # self.sigFinger.emit("Moving the finger down to pick up.")
-        # self.robot.movel(self.magdn_p, acc=1.4, vel=1.0)
+        # self.movel(self.magdn_p, acc=1.4, vel=1.0)
         # self.sigFinger.emit("Grabing.")
         # self.grab()
         # self.sigFinger.emit("Moving up to transport.")
-        # self.robot.movel(self.magup_p, acc=1.4, vel=1.0)
+        # self.movel(self.magup_p, acc=1.4, vel=1.0)
 
         time.sleep(5)
         self.sigFinger.emit("Moving down to return..")
         self.putsampledown()
-        # self.robot.movel(self.magdn_p, acc=1.4, vel=1.0)
+        # self.movel(self.magdn_p, acc=1.4, vel=1.0)
         # self.sigFinger.emit("Release fingers.")
         # self.release()
 
         # # move up and stop.
         # self.sigFinger.emit("Moving fingers up.")
-        # self.robot.movel(self.magup_p, acc=1.4, vel=1.0)
+        # self.movel(self.magup_p, acc=1.4, vel=1.0)
 
     def goto_default(self):
         self.pastpos = self.get_xyz()
         self.pastcommand = 'goto_default'
         self.sigRobotCommand.emit(self.pastcommand)
         self.sigRobotPosition.emit(self.pastpos)
-        pos = self.robot.getl()
+        pos = self.get_xyz().tolist()
         pm = self.magup_p.get_pos()
         ps = self.samup_p.get_pos()
         minzval = min(pm[2], ps[2])
         if pos[2] < minzval:
             pos[2] = minzval
-            self.robot.movel(pos, acc=0.5, vel=0.5)
-        self.robot.movej(self.middl_q, acc=0.5, vel=0.75)
+            self.movel(pos, acc=0.5, vel=0.5)
+        self.movej(self.middl_q, acc=0.5, vel=0.75)
 #        self.whereisFinger()
 
 #    def goto_magazine(self):
-#        pos = self.robot.getl()
+#        pos = self.get_xyz().tolist()
 #        if (pos[1] > -0.2) and (pos[0]>0.35) and (pos[2]>0.15):
 #            pass
 #        else:
 #            self.goto_default()
-#        self.robot.set_pose(self.magup_p, acc=0.5, vel=0.75, command="movej")
+#        self.set_pose(self.magup_p, acc=0.5, vel=0.75, command="movej")
 
     def pickup(self):
         run = 0
         if self.whereisFinger() == "nowhere":
             print("current figner position is at nowhere.")
         if self.whereisFinger() == 'samplestage':
-            self.robot.movel(self.samdn_p, acc=0.5, vel=0.5)
+            self.movel(self.samdn_p, acc=0.5, vel=0.5)
             run = 1
         if self.whereisFinger() == 'samplestage2':
-            self.robot.movel(self.samdn2_p, acc=0.5, vel=0.5)
+            self.movel(self.samdn2_p, acc=0.5, vel=0.5)
             run = 3
         if self.whereisFinger() == 'magazine':
-            self.robot.movel(self.magdn_p, acc=0.5, vel=0.5)
+            self.movel(self.magdn_p, acc=0.5, vel=0.5)
             run = 2
         self.grab()
         if run == 1:
-            self.robot.movel(self.samup_p, acc=0.5, vel=0.5)
+            self.movel(self.samup_p, acc=0.5, vel=0.5)
         if run == 2:
-            self.robot.movel(self.magup_p, acc=0.5, vel=0.5)
+            self.movel(self.magup_p, acc=0.5, vel=0.5)
         if run == 3:
-            self.robot.movel(self.samup2_p, acc=0.5, vel=0.5)
+            self.movel(self.samup2_p, acc=0.5, vel=0.5)
         
         val = self.finger.get_position()
         
@@ -644,26 +615,26 @@ class UR3(robUR.UR):
     def dropofftest(self):
         #print(self.whereisFinger(), "This is a finger position")
         #if not self.whereisFinger() == 'middle':
-        #    self.robot.movel(self.middl_p, acc=0.5, vel=0.5)
+        #    self.movel(self.middl_p, acc=0.5, vel=0.5)
         #print(self.whereisFinger(), "This is a finger position")
         if self.whereisFinger() == 'samplestage':
-            self.robot.movel(self.samup_p, acc=0.5, vel=0.5)
-            self.robot.movel(self.samdn_p, acc=0.5, vel=0.5)
+            self.movel(self.samup_p, acc=0.5, vel=0.5)
+            self.movel(self.samdn_p, acc=0.5, vel=0.5)
             self.grab()
 
             # transport to the magazine via the middle point
             self.sigFinger.emit("Being transported..")
-            self.robot.movel(self.samup_p, acc=0.5, vel=0.5)
+            self.movel(self.samup_p, acc=0.5, vel=0.5)
             time.sleep(5)
             self.putsampledown()
         elif self.whereisFinger() == 'samplestage2':
-            self.robot.movel(self.samup2_p, acc=0.5, vel=0.5)
-            self.robot.movel(self.samdn2_p, acc=0.5, vel=0.5)
+            self.movel(self.samup2_p, acc=0.5, vel=0.5)
+            self.movel(self.samdn2_p, acc=0.5, vel=0.5)
             self.grab()
 
             # transport to the magazine via the middle point
             self.sigFinger.emit("Being transported..")
-            self.robot.movel(self.samup2_p, acc=0.5, vel=0.5)
+            self.movel(self.samup2_p, acc=0.5, vel=0.5)
             time.sleep(5)
             self.putsampledown()
         else:
@@ -676,11 +647,11 @@ class UR3(robUR.UR):
         self.sigRobotCommand.emit(self.pastcommand)
         self.sigRobotPosition.emit(self.pastpos)
         if self.whereisFinger() == 'samplestage':
-            self.robot.movel(self.samup_p, acc=0.5, vel=0.5)
+            self.movel(self.samup_p, acc=0.5, vel=0.5)
         if self.whereisFinger() == 'samplestage2':
-            self.robot.movel(self.samup2_p, acc=0.5, vel=0.5)
+            self.movel(self.samup2_p, acc=0.5, vel=0.5)
         if self.whereisFinger() == 'magazine':
-            self.robot.movel(self.magup_p, acc=0.5, vel=0.5)
+            self.movel(self.magup_p, acc=0.5, vel=0.5)
 #        self.whereisFinger()
 
     def movefingerdown_tosamplestage(self):
@@ -688,7 +659,7 @@ class UR3(robUR.UR):
         self.pastcommand = 'movefingerdown_tosamplestage'
         self.sigRobotCommand.emit(self.pastcommand)
         self.sigRobotPosition.emit(self.pastpos)
-        self.robot.movel(self.samdn_p, acc=0.5, vel=0.5)
+        self.movel(self.samdn_p, acc=0.5, vel=0.5)
 #        self.whereisFinger()
 
     def movefingerdown_tomagazine(self):
@@ -696,7 +667,7 @@ class UR3(robUR.UR):
         self.pastcommand = 'movefingerdown_tomagazine'
         self.sigRobotCommand.emit(self.pastcommand)
         self.sigRobotPosition.emit(self.pastpos)
-        self.robot.movel(self.magdn_p, acc=0.5, vel=0.5)
+        self.movel(self.magdn_p, acc=0.5, vel=0.5)
 #        self.whereisFinger()
     
     def transfingertosamplestage(self):
@@ -747,13 +718,13 @@ class UR3(robUR.UR):
             self.goto_default()
             self.transport_from_default_to_magazine_up()
         if self.whereisFinger() == 'magazine':
-            self.robot.set_pose(self.magup_p, acc=0.5, vel=1, command='movej')
+            self.set_pose(self.magup_p, acc=0.5, vel=1, command='movej')
         #print(self.whereisFinger(), "This is in transfingertomagazine")
 
     def transport_from_default_to_magazine_up(self):
         self.pastpos = self.get_xyz()
         self.pastcommand = 'transport_from_default_to_magazine_up'
-        self.robot.set_pose(self.magup_p, acc=0.5, vel=1, command='movej')
+        self.set_pose(self.magup_p, acc=0.5, vel=1, command='movej')
 
     def putsampledown(self, z=0.150, offset=None):
         # robot arm will go down by abs(z)-offset
@@ -770,47 +741,44 @@ class UR3(robUR.UR):
             print("current figner position is at nowhere.")
         if self.whereisFinger() == 'samplestage':
             run = 1
-            cposz = self.robot.get_pos()
+            cposz = self.get_pos()
             z = abs(cposz[2] - self.samdn_p.pos[2])-offset
         if self.whereisFinger() == 'samplestage2':
             run = 3
-            cposz = self.robot.get_pos()
+            cposz = self.get_pos()
             z = abs(cposz[2] - self.samdn2_p.pos[2])-offset
             print(f"z to go is {z}")
         if self.whereisFinger() == 'magazine':
             run = 2
-            cposz = self.robot.get_pos()
+            cposz = self.get_pos()
             z = abs(cposz[2] - self.magdn_p.pos[2])-offset
 
         self.mvr2z(-z, acc=0.05, vel=0.05, wait=True) # No force measurement, just drop.
         self.loosen() # drop sample
         time.sleep(0.1)
         #try:
-        self.robot.down(0.002) # slide down further to make sure that the rubber on the gripper does not stick to the sample plate.
+        self.mvr2z(0.002) # slide down further to make sure that the rubber on the gripper does not stick to the sample plate.
         #except:
         #    return -1
         self.release()
         time.sleep(0.1)
         if run == 1:
-            self.robot.movel(self.samup_p, acc=0.5, vel=1)
+            self.movel(self.samup_p, acc=0.5, vel=1)
         if run == 2:
-            self.robot.movel(self.magup_p, acc=0.5, vel=1)
+            self.movel(self.magup_p, acc=0.5, vel=1)
         if run == 3:
-            self.robot.movel(self.samup2_p, acc=0.5, vel=1)
+            self.movel(self.samup2_p, acc=0.5, vel=1)
 #        self.whereisFinger()
         return 0
-#        self.robot.movel(pos_org, acc=0.4, vel=0.2, wait=True)
+#        self.movel(pos_org, acc=0.4, vel=0.2, wait=True)
 
     def dropsample(self, z=-1):
-        self.robot.bump(z=z, backoff=0.005) # No force measurement, just drop.
-#        status = False
-#        while (not status):
-#            status = self.robot.is_program_running()
-#            time.sleep(0.01)
+        self.bump(z=z, backoff=0.005) # No force measurement, just drop.
+
         self.release()
 
     def whereisFinger(self):
-        pos = self.robot.get_pose()
+        pos = self.get_pose()
 
         t = pos.pos - self.magup_p.pos
         t[2] = 0 # make Z 0. only compare (x, y)
@@ -831,7 +799,7 @@ class UR3(robUR.UR):
                 self.sigFingerPosition.emit('samplestage2')
                 return 'samplestage2'
 
-        ang = self.robot.getj()
+        ang = self.getj()
         v = numpy.asarray(self.middl_q)
         if sum((v-ang)*(v-ang)) < 0.01:
             return 'middle'
@@ -1049,12 +1017,12 @@ class UR3(robUR.UR):
         #if not isinstance(orient, m3d.Orientation):
         orient = m3d.Orientation([0, -math.pi, 0]) # make camera point +y axis.
         #orient.rotate_zb(math.pi/2) # make camera point +x
-        trans = self.robot.get_pose()
+        trans = self.get_pose()
         trans.orient = orient
         trans.orient.rotate_zb(math.atan2(obj_pos[1], obj_pos[0])-math.pi/2)
         newpos = (obj_pos.length-0.2)/obj_pos.length*obj_pos
         trans.set_pos(newpos)
-        self.robot.set_pose(trans, acc=0.1, vel=0.1)
+        self.set_pose(trans, acc=0.1, vel=0.1)
 
     def get_obj_position_from_camera_center(self, distance2go):
         # calculate the object position that is at the center of camera image and QRrefdistance away from the camera surface.
@@ -1075,15 +1043,15 @@ class UR3(robUR.UR):
 
         self.move_toward_camera(distance=0, north=-t[1][0], east=t[0][0], acc=0.1, vel=0.2)
 
-        p = self.robot.get_pose()
+        p = self.get_pose()
         self.prev_pose = p.copy()
-        self.prev_tcp = self.robot.get_tcp()
+        self.prev_tcp = self.get_tcp()
 
         p.orient.rotate_zt(euler[2]/180*math.pi)
         p.orient.rotate_yt(-euler[1]/180*math.pi)
         p.orient.rotate_xt(-euler[0]/180*math.pi)
         #print(p)
-        self.robot.set_pose(p, wait=True, acc=0.1, vel=0.2, command="movej")
+        self.set_pose(p, wait=True, acc=0.1, vel=0.2, command="movej")
 
 
 # #        self.mvr2xTCP(-t[0])
@@ -1157,7 +1125,7 @@ def auto_align_12idb_remote_heater(rob):
     print("")
     print("")
     print("Confirming the distance from the tag by touching.")
-    rob.robot.bump(x=-0.2, backoff=0.05)
+    rob.bump(x=-0.2, backoff=0.05)
     rob.mvr2z(0.05)
     print("")
     print("")
@@ -1172,7 +1140,7 @@ def auto_align_12idb_remote_heater(rob):
     print("Aligning the position along the beam by touching.")
     rob.mvr2y(-0.04)
     rob.mvr2z(-0.04)
-    rob.robot.bump(y=0.1, backoff=0.02)
+    rob.bump(y=0.1, backoff=0.02)
     rob.mvr2z(0.04)
     # go to the center of the heater along the beam direction.
     rob.mvr2y(0.032)
@@ -1181,7 +1149,7 @@ def auto_align_12idb_remote_heater(rob):
     print("")
     print("Checking the z position by touching.")
     v_standoff = 0.02
-    rob.robot.bump(z=-0.1, backoff=v_standoff)
+    rob.bump(z=-0.1, backoff=v_standoff)
     p0 = rob.get_xyz()
     # in-plane tilt tuning..
     print("")
@@ -1190,11 +1158,11 @@ def auto_align_12idb_remote_heater(rob):
     rob.mvr2y(0.015)
     rob.mvr2z(-z_tempdown)
     rob.mvr2x(barlength/2)
-    rob.robot.bump(y=-0.01)
+    rob.bump(y=-0.01)
     p1 = rob.get_xyz()
     rob.mvr2y(0.005)
     rob.mvr2x(-barlength)
-    rob.robot.bump(y=-0.01)
+    rob.bump(y=-0.01)
     p2 = rob.get_xyz()
     rob.mvr2y(0.005)
     rob.mvr2x(barlength/2)
@@ -1236,10 +1204,10 @@ def auto_align_12idb_standard_holder(rob):
     rob.rotx(-30, coordinate='camera')
     rob.mvr2x(0.04)
     rob.grab()
-    rob.robot.bump(x=-0.1, backoff=0.005)
+    rob.bump(x=-0.1, backoff=0.005)
     rob.mvr2z(0.03)
     rob.mvr2x(-1*(gripper_width/2+barlength/2)-0.005)
-    rob.robot.bump(z=-0.1, backoff = 0.005)
+    rob.bump(z=-0.1, backoff = 0.005)
     rob.release()
     rob.mvr2z(-0.02-0.005)
     rob.set_current_as_sampledown()

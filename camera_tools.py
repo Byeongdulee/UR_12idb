@@ -45,7 +45,7 @@ def run_measuredistance(rob):
         rob.rotz(90)
     else:
         rob.rotz(-90)
-    print(rob.robot.bump(z=-1, backoff=0.1))
+    print(rob.bump(z=-1, backoff=0.1))
 
 def run_centering(rob):
     rob.camera._running = True
