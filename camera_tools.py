@@ -6,7 +6,7 @@ import time
 import numpy as np
 #from imutils import paths
 import cv2
-from urxe.urcamera import decodeQR, showQRcode
+from utils.urcamera import decodeQR, showQRcode
 from threading import Thread
 from pupil_apriltags import Detector
 

@@ -20,12 +20,13 @@ import logging
 import math
 import time
 import os
-
+import sys
+sys.path.append('..')
 from urxe.robot import Robotiq_Two_Finger_Gripper
 from urxe.robot import Robot
-from urxe.urdashboard import dashboard
-from urxe.urcamera import camera
-from urxe import robot, ursecmon
+from utils.urdashboard import dashboard
+from utils.urcamera import camera
+from urxe import ursecmon
 text_file_path = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(text_file_path, '..', 'urscripts', 'checkdistance.script'), 'r') as file:
     CheckdistanceScript = file.read()
@@ -51,10 +52,11 @@ m3d_Zdown_cameraYm = [[1, 0, 0], [0, -1, 0], [0, 0, -1]]
 # trans = self.robot.get_pose()  # here trans represents the transformed TCP coordinate.
 # To rate in the robot base frame,
 # trans = m3d.Transform()  # make a new m3d object, 
-
 # Then, trans.orient.rotate_xt(), rotate_yt(), rotate_zt(), or rotate_t(ax, angle)
 
-class UR(QObject):
+# Define your own robot to include camera and dashboard....
+# edit all these basic functions to work.
+class UR_cam_grip(QObject):
     # unit of position vector : meter.
     _TCP2CAMdistance = 0.12
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
@@ -108,6 +110,7 @@ class UR(QObject):
 #        if self.robot.secmon.is_protective_stopped():
 #            self.dashboard.unlock()
         #self.finger.gripper_activate()
+# Make this common function to work.
 
     def terminate(self):
         self.robot.close()
@@ -176,7 +179,12 @@ class UR(QObject):
     def bump(self, *args, **kwargs):
         self.robot.bump(*args, **kwargs)
 
-# New functions................
+# This class add advanced methods to the UR_cam_grip class.
+# for example, combining camera, dashboard, and robot motion all together.
+
+class UR(UR_cam_grip):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     def calc_position_in_base(self, pos):
         # pos is a coordinate in tcp coordinate.
@@ -296,17 +304,7 @@ class UR(QObject):
         v[5] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    # def mv(self, pos, acc=0.5, vel=0.5, wait=True):
-    #     v = self.get_xyz().tolist()
-    #     if pos[0] != None:
-    #         v[0] = pos[0]
-    #     if pos[1] != None:
-    #         v[1] = pos[1]
-    #     if pos[2] != None:
-    #         v[2] = pos[2]        
-    #     self.moveto(v, acc=acc, vel=vel, wait=wait)
-    
-    def movels(self, pos_list, radius = 0.01, acc=0.5, vel=0.5, wait=True):
+    def move_poses(self, pos_list, radius = 0.01, acc=0.5, vel=0.5, wait=True):
         " movels([0.1, 0.1, 0.1], [0.2, 0.2, 0.2], [0.2, 0.3, 0.2]], radius=0.1)"
         v = self.get_xyz().tolist()
         for i, vec in enumerate(pos_list):

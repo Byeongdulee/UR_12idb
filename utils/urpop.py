@@ -86,6 +86,7 @@ class Popinfo(object):
         # sleep the code the same amount as the urscript to ensure that
         # the action completes
         time.sleep(sleep)
+        
     def unlock(self):
         urscript = self._get_unlock_urscript()
 

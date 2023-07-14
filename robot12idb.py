@@ -40,9 +40,9 @@ class RobotException(Exception):
 
 # UR3
 from urxe import robUR
-from urxe.urcamera import Detection as atDET
-from urxe.urcamera import cal_AT2pose
-from urxe import utils
+from utils.urcamera import Detection as atDET
+from utils.urcamera import cal_AT2pose
+from utils import utils
 import camera_tools as cameratools
 april_tag_size = {'heater': 0.0075}
 

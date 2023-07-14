@@ -15,7 +15,6 @@ import logging
 import socket
 import time
 from urxe.urmon_parser import ParsingException, ParserUtils 
-from urxe.urdashboard import dashboard
 
 __author__ = "Byeongdu Lee"
 __copyright__ = "Argonne National Laboratory"
@@ -54,7 +53,6 @@ class SecondaryMonitor(Thread):
 
     def __init__(self, host):
         Thread.__init__(self)
-        self.dash = dashboard(host)
         self.logger = logging.getLogger("ursecmon")
         self._parser = ParserUtils()
         self._dict = {}
@@ -75,7 +73,6 @@ class SecondaryMonitor(Thread):
             self.wait()  # make sure we got some data before someone calls us
         except Exception as ex:
             print("Secmon Thread is killed.")
-            self.dash.unlock()
             self.close()
             raise ex
 
