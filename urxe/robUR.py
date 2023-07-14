@@ -126,16 +126,6 @@ class UR(QObject):
     def set_tcp(self, tcp):
         return self.robot.set_tcp(tcp)
 
-    def bump(self, x=0, y=0, z=0, backoff=0, wait=True):
-        #data = CheckdistanceScript
-        data = CheckdistanceScript.replace('__replace__', f'[{x}, {y}, {z}, 0, 0, 0]')
-        data = data.replace('__backoff__', f'{backoff}')
-        self.robot.send_program(data)
-        while not self.robot.is_program_running():
-            time.sleep(0.01)
-        if wait:
-            while self.robot.is_program_running():
-                time.sleep(0.01)
     def getj(self):
         joints = self.robot.getj()
         return joints    

@@ -4,6 +4,9 @@ text_file_path = os.path.dirname(os.path.abspath(__file__))
 # get the python-urx from below:
 # https://github.com/Byeongdulee/python-urx
 sys.path.append(os.path.join(text_file_path, '..', '..', 'python-urx'))
+text_file_path = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(text_file_path, '..', 'urscripts', 'checkdistance.script'), 'r') as file:
+    CheckdistanceScript = file.read()
 
 from urx import robot, urrobot, robotiq_two_finger_gripper
 from urxe import ursecmon, urrtmon
@@ -73,6 +76,16 @@ class Robot(robot.Robot):
         while not (np.round(np.array(_tcp), 5) == np.round(np.array(tcp), 5)).all():
             _tcp = self.get_tcp()
 
+    def bump(self, x=0, y=0, z=0, backoff=0, wait=True):
+        #data = CheckdistanceScript
+        data = CheckdistanceScript.replace('__replace__', f'[{x}, {y}, {z}, 0, 0, 0]')
+        data = data.replace('__backoff__', f'{backoff}')
+        self.send_program(data)
+        while not self.is_program_running():
+            time.sleep(0.01)
+        if wait:
+            while self.is_program_running():
+                time.sleep(0.01)
 
 class RobotiqScript(robotiq_two_finger_gripper.RobotiqScript): 
     # should make a variable named "rq_pos" on the teach pendent to be able to run this.
