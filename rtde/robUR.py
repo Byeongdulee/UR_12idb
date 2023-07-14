@@ -45,7 +45,9 @@ m3d_Zdown_cameraYm = [[1, 0, 0], [0, -1, 0], [0, 0, -1]]
 import rtde_control as rc
 import rtde_receive as rr
 #import rtde_io as rio
-from robotiq_gripper_control import RobotiqGripper
+from .robotiq_gripper_control import RobotiqGripper
+from utils.urcamera import camera
+from utils.urdashboard import dashboard
 ######## How to use m3d.
 # To rotate in the TCP frame,
 # trans = self.robot.get_pose()  # here trans represents the transformed TCP coordinate.
@@ -54,7 +56,7 @@ from robotiq_gripper_control import RobotiqGripper
 
 # Then, trans.orient.rotate_xt(), rotate_yt(), rotate_zt(), or rotate_t(ax, angle)
 
-class UR():
+class UR_cam_grip():
     # unit of position vector : meter.
     _TCP2CAMdistance = 0.12
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
@@ -100,7 +102,7 @@ class UR():
         self.IP = IP
         self.set_tcp(self.tcp)
         self.set_payload(1.35, (-0.003,0.01,0.037))
-#        self.dashboard = dashboard(self.robot)
+        self.dashboard = dashboard(self.IP)
 
     def terminate(self):
         self.rc.stopScript()
@@ -134,10 +136,10 @@ class UR():
         data = CheckdistanceScript.replace('__replace__', f'[{x}, {y}, {z}, 0, 0, 0]')
         data = data.replace('__backoff__', f'{backoff}')
         self.rc.sendCustomScript(data)
-        while not self.is_program_running():
+        while not self.rr.is_program_running():
             time.sleep(0.01)
         if wait:
-            while self.is_program_running():
+            while self.rr.is_program_running():
                 time.sleep(0.01)
         self.rc.stopScript()
 
