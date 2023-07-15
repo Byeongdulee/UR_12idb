@@ -24,11 +24,7 @@ cd UR_12idb
 python
 ```
 ```python
-> import urxe
-```
-or
-```python
-> from urxe import robUR
+> from common import robUR
 ```
 If you intend to use robot12idb.py, it will be convenient to use without installation.
 
@@ -43,13 +39,23 @@ https://github.com/Byeongdulee/python-urx
 * pyzbar, pip install pyzbar, note Window error message on https://pypi.org/project/pyzbar/
 * pupil-apriltags, pip install pupil-apriltags, https://pypi.org/project/pupil-apriltags/
 * roboDK, pip install robodk, https://pypi.org/project/robodk/
-
+* ur_rtde, pip install ur_rtde, https://sdurobotics.gitlab.io/ur_rtde/
 
 
 # Examples
 ```python
-> from urxe import robUR
-> rob = robUR.UR("164.54.xxx.xxx") 
+> from common import robUR
+> rob = robUR.UR("164.54.xxx.xxx") # by default, this will load urxe package
+```
+You can load ur_rtde package too.
+```python
+> from common import robUR
+> rob = robUR.UR("164.54.xxx.xxx", package='rtde')
+```
+If you do not have a camera,
+```python
+> from common import robUR
+> rob = robUR.UR("164.54.xxx.xxx", cameratype = 0)
 ```
 Translations
 ```python
@@ -74,7 +80,7 @@ Orientations
 UR script programs
 ```python
 > rob.measureheight() # let the arm move along z direction until it bumps to a surface.
-> rob.robot.bump(x=0.1, backoff=0.01) # let the arm move along +x until it bumps to a surface. Once it bumps, it will back off opposite direction by backoff value
+> rob.bump(x=0.1, backoff=0.01) # let the arm move along +x until it bumps to a surface. Once it bumps, it will back off opposite direction by backoff value
 ```
 Gripper
 ```python
@@ -134,7 +140,7 @@ See camera_tools.py for examples.
 
 You can configure it without a camera.
 ```python
-> from urxe import robUR
+> from common import robUR
 > rob = robUR.UR("164.54.xxx.xxx", cameratype=0) 
 > rob.mvr2z(0.1)
 ```
