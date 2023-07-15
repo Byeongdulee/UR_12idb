@@ -56,13 +56,14 @@ from utils.urdashboard import dashboard
 
 # Then, trans.orient.rotate_xt(), rotate_yt(), rotate_zt(), or rotate_t(ax, angle)
 
-class UR_cam_grip():
+class UR_cam_grip(QObject):
     # unit of position vector : meter.
     _TCP2CAMdistance = 0.12
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
     camtcp = [0, 0.04, 0.015, -math.pi/180*30, 0, 0]
 
     def __init__(self, name = 'UR3', fingertype=1, cameratype=1):
+        super().__init__()
         # fingertype:
         #   0: No finger
         #   1: Robotiq finger
@@ -176,9 +177,16 @@ class UR_cam_grip():
                     return self.csys.inverse * m3d.Transform(pose)
     
     def movel(self, pos_list, acc=0.01, vel=0.01, wait = True, relative=False):
+        l = self.getl()
         if relative:
-            l = self.getl()
             tpose = [v + l[i] for i, v in enumerate(pos_list)]
+        else:
+            tpose = pos_list
+            if len(pos_list)<6:
+                tpose.append(l[3])
+                tpose.append(l[4])
+                tpose.append(l[5])
+        print(tpose)
         self.rc.moveL(tpose, acceleration=acc, speed=vel, asynchronous=not wait)
         if wait:
             pose = self.get_pose()
@@ -230,7 +238,7 @@ class UR_cam_grip():
         p[0] += vect[0]
         p[1] += vect[1]
         p[2] += vect[2]
-        return self.movel(p, vel=vel, acc=acc, wait=wait)
+        return self.movel(p, vel=vel, acc=acc, relative=False, wait=wait)
     
     def translate_tool(self, vect, acc=0.01, vel=0.01, wait=True):
         """
