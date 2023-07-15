@@ -8,8 +8,10 @@ This repository contains a python package for controlling UR robots at synchrotr
 This python package urxe is based on urx, https://github.com/Byeongdulee/python-urx or its original, https://github.com/SintefManufacturing/python-urx.
 urxe is an extension of urx for Robotiq wrist camera and gripper and rtmon for a newer OS (5.8 and higher).
 
-The secondary monitor of python-urx was rewritten for better use at the APS.
+The secondary monitor of python-urx was rewritten for better use at the APS. The thread is changed to be daemonic, which I do not know a right thing to do...
 Since the rtde code of python-urx does not support many features required for 12ID operation, it is replaced with ur-rtde distributed by Universal Robot.
+
+Some codes for the robotiq gripper are downloaded without modification (see the head lines for the source).
 
 # Installation
 You can download from github or clone, for example https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository.

@@ -4,6 +4,8 @@ ur_rtde robot interface.
 
 Attributes: 
     rtde_c (rtde_control.RTDEControlInterface): The interface to use for the communication
+
+https://sdurobotics.gitlab.io/ur_rtde/_static/robotiq_gripper_control.py
 '''
 #import rtde_control
 from robotiq_preamble import ROBOTIQ_PREAMBLE

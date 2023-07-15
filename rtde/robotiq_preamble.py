@@ -1,3 +1,4 @@
+'''https://sdurobotics.gitlab.io/ur_rtde/_static/robotiq_preamble.py'''
 NEW_LINE = "\n"
 QUOTATION = "\""
 ROBOTIQ_PREAMBLE = "\n".join([
