@@ -6,7 +6,6 @@ import sys
 sys.path.append('urxe')
 try:
     from . import robot
-    from .. import robUR
     from . import ursecmon
     from . import urrtmon
     from . import urmon_parser

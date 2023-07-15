@@ -2,9 +2,7 @@
 #import time
 import sys
 sys.path.append('..')
-from PyQt5.QtCore import QObject
 
-import numpy as np
 from robotiq_gripper_control import RobotiqGripper
 
 class RobotException(Exception):
@@ -74,7 +72,6 @@ class Robot():
         self.logger = logging.getLogger(IP)
         
         self.orientation = m3d_Zdown_cameraY
-
         self.rc = rc.RTDEControlInterface(IP)
         self.rr = rr.RTDEReceiveInterface(IP)
         #self.rio = rio.RTDEIOInterface(IP)

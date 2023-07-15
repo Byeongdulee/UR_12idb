@@ -80,7 +80,7 @@ class UR3(UR):
             print(f"{name} does not exist in ../RobotList/list_of_robots.json")
             return
 
-        super(UR3, self).__init__(IP, fingertype=fingertype, cameratype=cameratype)
+        super(UR3, self).__init__(IP, package=package, fingertype=fingertype, cameratype=cameratype)
 
         self.name = name
         self.ini_name = os.path.join(text_file_path, 'ini', '%s.ini'%name)

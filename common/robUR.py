@@ -81,12 +81,12 @@ class UR_cam_grip(QObject):
         if package == 'urxe':
             from urxe.robot import RobotiqGripper
             from urxe.robot import Robot
-        if package == 'rdte':
+        if package == 'rtde':
             from rtde.robot import Robot
             from rtde.robot import RobotiqGripper
 
         try:
-            self.robot = Robot(IP, use_rt=True, urFirm=(5.9))
+            self.robot = Robot(IP)
         except TimeoutError:
             raise RobotException(f'Robot {IP} does not respond.')
         except ursecmon.ProtectiveStopException:
@@ -109,7 +109,7 @@ class UR_cam_grip(QObject):
         self.robot.IP = IP
         self.set_tcp(self.tcp)
         self.set_payload(1.35, (-0.003,0.01,0.037))
-        self.dashboard = dashboard(self.IP)
+        self.dashboard = dashboard(self.robot)
 
     def terminate(self):
         self.robot.close()

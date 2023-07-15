@@ -49,13 +49,13 @@ class URRobot(urrobot.URRobot):
         self.secmon.wait()  # make sure we get data from robot before letting clients access our methods
 
 class Robot(robot.Robot):
-    def __init__(self, host, use_rt=False, urFirm=None) -> None:
+    def __init__(self, host, use_rt=True, urFirm=(5.9)) -> None:
         URRobot.__init__(self, host, use_rt=use_rt, urFirm=urFirm)
         self.csys = m3d.Transform()
         FORMAT = '%(message)s'
         logging.basicConfig(format=FORMAT)
         self.logger = logging.getLogger("myrobot")
-        self.urFirm = (5.9)
+        self.urFirm = urFirm
         #self.secmon = ursecmon.SecondaryMonitor(self.host)  # data from robot at 10Hz
         #self.rtmon = urrtde.URRTMonitor(self.host)
         #self.rtmon = urrtmon.URRTMonitor(self.host, self.urFirm)
