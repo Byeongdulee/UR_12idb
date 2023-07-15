@@ -2,23 +2,17 @@
 #import time
 import sys
 sys.path.append('..')
-#from urxe import camera
 from PyQt5.QtCore import QObject
 
 import numpy as np
+from robotiq_gripper_control import RobotiqGripper
 
 class RobotException(Exception):
     pass
 
-class NoCameraException(Exception):
-    pass
-
-class NoFingerException(Exception):
-    pass
-
 # UR3
 import math3d as m3d
-#import numpy as np
+import numpy as np
 import logging
 import math
 import time
@@ -45,9 +39,7 @@ m3d_Zdown_cameraYm = [[1, 0, 0], [0, -1, 0], [0, 0, -1]]
 import rtde_control as rc
 import rtde_receive as rr
 #import rtde_io as rio
-from .robotiq_gripper_control import RobotiqGripper
-from utils.urcamera import camera
-from utils.urdashboard import dashboard
+#from .robotiq_gripper_control import RobotiqGripper
 ######## How to use m3d.
 # To rotate in the TCP frame,
 # trans = self.robot.get_pose()  # here trans represents the transformed TCP coordinate.
@@ -56,13 +48,13 @@ from utils.urdashboard import dashboard
 
 # Then, trans.orient.rotate_xt(), rotate_yt(), rotate_zt(), or rotate_t(ax, angle)
 
-class UR_cam_grip(QObject):
+class Robot():
     # unit of position vector : meter.
     _TCP2CAMdistance = 0.12
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
     camtcp = [0, 0.04, 0.015, -math.pi/180*30, 0, 0]
 
-    def __init__(self, name = 'UR3', fingertype=1, cameratype=1):
+    def __init__(self, name = 'UR3'):
         super().__init__()
         # fingertype:
         #   0: No finger
@@ -87,34 +79,16 @@ class UR_cam_grip(QObject):
         self.rr = rr.RTDEReceiveInterface(IP)
         #self.rio = rio.RTDEIOInterface(IP)
 
-        if cameratype==2:
-            self.camera = camera(IP='')
-        elif cameratype==1:
-            self.camera = camera(IP)
-        else:
-            pass
-
-        if fingertype==1:
-            self.finger = RobotiqGripper(self.rc)
-        else:
-            pass
-
         #self.__TCP2CAMdistance = 0.15
         self.IP = IP
         self.set_tcp(self.tcp)
         self.set_payload(1.35, (-0.003,0.01,0.037))
-        self.dashboard = dashboard(self.IP)
 
     def terminate(self):
         self.rc.stopScript()
         self.rc.disconnect()
         self.rr.disconnect()
 #        self.rio.disconnect()
-        try:
-            if hasattr(self, 'camera'):
-                self.camera.vidcap.release()
-        except:
-            pass
 
     def set_csys(self, transform):
         """
@@ -197,12 +171,6 @@ class UR_cam_grip(QObject):
     def movej(self, q, vel=0.1, acc=0.1, wait=True):
         self.rc.moveJ(q, acceleration=acc, speed=vel, asynchronous=not wait)
     
-    def get_status(self):
-        return self.dashboard.get_status()
-
-    def unlock_stop(self):
-        self.dashboard.unlock()
-
     def is_protective_stopped(self):
         return self.rr.isProtectiveStopped()   
 
@@ -256,3 +224,227 @@ class UR_cam_grip(QObject):
             speed[i] = speed[i] * vel
         self.rc.moveUntilContact(speed)
         self.rc.stopScript()
+
+    def gripper_action(self, value):
+        """
+        Activate the gripper to a given value from 0 to 255
+
+        0 is open
+        255 is closed
+        """
+        urscript = self._get_urscript()
+
+        # Move to the position
+        sleep = 2.0
+        urscript._set_gripper_position(value)
+        urscript._sleep(sleep)
+
+        # Send the script
+#        print(urscript())
+        self.robot.send_program(urscript())
+
+        # sleep the code the same amount as the urscript to ensure that
+        # the action completes
+        time.sleep(sleep)
+
+    def set_gripper_force(self, force):
+        """
+        Activate the gripper to a given value from 0 to 255
+
+        0 is open
+        255 is closed
+        """
+        self.force = force
+        urscript = self._get_urscript()
+        urscript._set_gripper_force(self.force)
+        # Move to the position
+        sleep = 2.0
+        urscript._sleep(sleep)
+
+        # Send the script
+#        print(urscript())
+        self.robot.send_program(urscript())
+
+        # sleep the code the same amount as the urscript to ensure that
+        # the action completes
+        time.sleep(sleep)
+
+    def _get_urscript(self):
+        """
+        Set up a new URScript to communicate with gripper
+        """
+        urscript = RobotiqScript(self.socket_host,
+                                    self.socket_port,
+                                    self.socket_name)
+
+        urscript._sleep(0.1)
+
+        return urscript
+
+    def _get_finger_urscript(self):
+        """
+        Set up a new URScript to communicate with gripper
+        """
+        urscript = RobotiqScript(self.socket_host,
+                                    self.socket_port,
+                                    self.socket_name)
+        # Wait on activation to avoid USB conflicts
+    #        urscript._sleep(0.1)
+
+        return urscript
+    
+    def _get_new_urscript(self):
+        """
+        Set up a new URScript to communicate with gripper
+        """
+        urscript = RobotiqScript(self.socket_host,
+                                    self.socket_port,
+                                    self.socket_name)
+
+        # Set input and output voltage ranges
+        urscript._set_analog_inputrange(0, 0)
+        urscript._set_analog_inputrange(1, 0)
+        urscript._set_analog_inputrange(2, 0)
+        urscript._set_analog_inputrange(3, 0)
+        urscript._set_analog_outputdomain(0, 0)
+        urscript._set_analog_outputdomain(1, 0)
+        urscript._set_tool_voltage(0)
+        urscript._set_runstate_outputs()
+
+        # Set payload, speed and force
+        urscript._set_payload(self.payload)
+        urscript._set_gripper_speed(self.speed)
+        urscript._set_gripper_force(self.force)
+
+        # Initialize the gripper
+        urscript._set_robot_activate()
+        urscript._set_gripper_activate()
+
+        # Wait on activation to avoid USB conflicts
+        urscript._sleep(0.1)
+
+        return urscript
+    
+    def gripper_activate(self):
+        """
+        Activate the gripper to a given value from 0 to 255
+
+        0 is open
+        255 is closed
+        """
+        # When Robotiq wrist camera is used with Robotiq handE gripper,
+        # urscript._set_tool_voltage(0) may be needed. See urx/robotiq_two_finger_gripper/_get_new_urscript
+        # lines 170 ~ 176.
+        urscript = self._get_new_urscript()
+
+        # Move to the position
+        sleep = 2.0
+        urscript._set_gripper_position(0)
+        urscript._sleep(sleep)
+
+        # Send the script
+        self.robot.send_program(urscript())
+
+        # sleep the code the same amount as the urscript to ensure that
+        # the action completes
+        time.sleep(sleep)
+
+    def get_position(self):
+        """
+        Activate the gripper to a given value from 0 to 255
+
+        0 is open
+        255 is closed
+        """
+        urscript = self._get_finger_urscript()
+        urscript._sleep(0.1)
+  
+        # Move to the position
+        urscript._get_gripper_position()
+        urscript._sync()
+        urscript._sleep(0.1)
+        self.robot.send_program(urscript())
+    #        time.sleep(1)
+        time.sleep(0.3)
+        data = self.robot.secmon.get_all_data()
+#        print(data['MasterBoardData']['analogOutput0'])
+        #print(self.robot.rtmon.state.output_double_register_0)
+        
+        try:
+            output = (data['MasterBoardData']['analogOutput0']*254)/5
+        except:
+            output = -1
+        return output
+    
+    def open_gripper(self):
+        self.gripper_action(0)
+
+    def close_gripper(self):
+        self.gripper_action(255)
+
+class RobotiqGripper(RobotiqGripper):
+    def __init__(self,*args, **kwargs):
+        super().__init__(*args, **kwargs)
+    
+    def gripper_action(self, value):
+        """
+        Activate the gripper to a given value from 0 to 255
+        
+        0 is open
+        255 is closed
+        """
+        value = value/255*60
+        return self.move(self, value)
+
+
+    def set_gripper_force(self, force):
+        """
+        Activate the gripper to a given value from 0 to 255
+
+        0 is open
+        255 is closed
+        """
+        force = force/255*100
+        return self.set_force(force)
+    
+    def gripper_activate(self):
+        """
+        Activate the gripper to a given value from 0 to 255
+
+        0 is open
+        255 is closed
+        """
+        return self.activate()
+
+    def get_position(self):
+        """
+        Activate the gripper to a given value from 0 to 255
+
+        0 is open
+        255 is closed
+        """
+        urscript = self._get_finger_urscript()
+        urscript._sleep(0.1)
+  
+        # Move to the position
+        urscript._get_gripper_position()
+        urscript._sync()
+        urscript._sleep(0.1)
+        self.robot.send_program(urscript())
+    #        time.sleep(1)
+        time.sleep(0.3)
+        data = self.robot.secmon.get_all_data()
+#        print(data['MasterBoardData']['analogOutput0'])
+        #print(self.robot.rtmon.state.output_double_register_0)
+        
+        try:
+            output = (data['MasterBoardData']['analogOutput0']*254)/5
+        except:
+            output = -1
+        return output
+    
+    def open_gripper(self):
+        return self.open()
+
+    def close_gripper(self):
+        return self.close()  

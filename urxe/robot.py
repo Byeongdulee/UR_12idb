@@ -106,7 +106,7 @@ SOCKET_HOST = "127.0.0.1"
 SOCKET_PORT = 63352
 SOCKET_NAME = "gripper_socket"
 
-class Robotiq_Two_Finger_Gripper(object):
+class RobotiqGripper(object):
 
     def __init__(self,robot, payload=0.85, speed=255, force=150, socket_host=SOCKET_HOST,socket_port=SOCKET_PORT, socket_name=SOCKET_NAME):
         self.robot = robot

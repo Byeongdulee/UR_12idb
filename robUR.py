@@ -8,10 +8,10 @@ import math
 import os
 import sys
 sys.path.append('..')
-from urxe.robot import Robotiq_Two_Finger_Gripper
+from urxe.robot import RobotiqGripper
 from urxe.robot import Robot
-from utils.urdashboard import dashboard
-from utils.urcamera import camera
+from common.urdashboard import dashboard
+from common.urcamera import camera
 from urxe import ursecmon
 text_file_path = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(text_file_path, '..', 'urscripts', 'checkdistance.script'), 'r') as file:
@@ -84,7 +84,7 @@ class UR_cam_grip(QObject):
             pass
 
         if fingertype==1:
-            self.finger = Robotiq_Two_Finger_Gripper(self.robot)
+            self.finger = RobotiqGripper(self.robot)
         else:
             pass
 
@@ -92,11 +92,7 @@ class UR_cam_grip(QObject):
         self.robot.IP = IP
         self.set_tcp(self.tcp)
         self.set_payload(1.35, (-0.003,0.01,0.037))
-        self.dashboard = dashboard(self.robot)
-#        if self.robot.secmon.is_protective_stopped():
-#            self.dashboard.unlock()
-        #self.finger.gripper_activate()
-# Make this common function to work.
+        self.dashboard = dashboard(self.IP)
 
     def terminate(self):
         self.robot.close()

@@ -7,6 +7,6 @@ sys.path.append('rtde')
 try:
     from . import robotiq_gripper_control
     from . import robotiq_preamble
-    from . import robUR
+    from . import robot
 except:
     raise ModuleNotFoundError

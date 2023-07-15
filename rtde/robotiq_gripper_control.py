@@ -98,3 +98,6 @@ class RobotiqGripper(object):
             True if the command succeeded, otherwise it returns False
         """
         return self.call("CLOSE", "rq_close_and_wait()")
+    
+    def get_position(self):
+        return self.call("GET_POS", "rq_get_position")

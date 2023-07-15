@@ -8,5 +8,6 @@ try:
     from . import urdashboard
     from . import urpop
     from . import utils
+    from . import robUR
 except:
     raise ModuleNotFoundError

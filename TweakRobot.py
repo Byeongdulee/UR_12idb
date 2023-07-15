@@ -6,8 +6,8 @@ from PyQt5.QtGui import QImage
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox 
 from PyQt5 import uic
 #from roboUR3 import roboUR3
-from urxe.robUR import UR
-import argparse
+#from common.robUR import UR
+#import argparse
 import cv2
 import math
 import traceback, sys
