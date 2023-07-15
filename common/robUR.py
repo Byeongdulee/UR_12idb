@@ -54,7 +54,7 @@ m3d_Zdown_cameraYm = [[1, 0, 0], [0, -1, 0], [0, 0, -1]]
 # Define your own robot to include camera and dashboard....
 # edit all these basic functions to work.
 
-class SafetyStatus(Enum):
+class SafetyMode(Enum):
     IS_NORMAL_MODE = 1
     IS_REDUCED_MODE = 2
     IS_PROTECTIVE_STOPPED = 3
@@ -66,6 +66,33 @@ class SafetyStatus(Enum):
     IS_VIOLATION = 9
     IS_FAULT = 10
     IS_STOPPED_DUE_TO_SAFETY = 11
+
+class SafetyStatus(Enum):
+    SAFETY_STATUS_SYSTEM_THREE_POSITION_ENABLING_STOP	= 13
+    SAFETY_STATUS_AUTOMATIC_MODE_SAFEGUARD_STOP	= 12
+    SAFETY_STATUS_UNDEFINED_SAFETY_MODE	= 11
+    SAFETY_STATUS_VALIDATE_JOINT_ID	= 10
+    SAFETY_STATUS_FAULT	= 9
+    SAFETY_STATUS_VIOLATION	= 8
+    SAFETY_STATUS_ROBOT_EMERGENCY_STOP	= 7
+    SAFETY_STATUS_SYSTEM_EMERGENCY_STOP	=6
+    SAFETY_STATUS_SAFEGUARD_STOP	=5
+    SAFETY_STATUS_RECOVERY	=4
+    SAFETY_STATUS_PROTECTIVE_STOP	=3
+    SAFETY_STATUS_REDUCED	= 2
+    SAFETY_STATUS_NORMAL	=1
+
+class RobotMode(Enum):
+    ROBOT_MODE_NO_CONTROLLER	= -1	
+    ROBOT_MODE_DISCONNECTED		= 0	
+    ROBOT_MODE_CONFIRM_SAFETY	= 1	
+    ROBOT_MODE_BOOTING			= 2	
+    ROBOT_MODE_POWER_OFF		= 3	
+    ROBOT_MODE_POWER_ON			= 4	
+    ROBOT_MODE_IDLE				= 5	
+    ROBOT_MODE_BACKDRIVE		= 6	
+    ROBOT_MODE_RUNNING			= 7	
+    ROBOT_MODE_UPDATING_FIRMWARE = 8	
 
 class UR_cam_grip(QObject):
     # unit of position vector : meter.
@@ -161,15 +188,27 @@ class UR_cam_grip(QObject):
         return self.robot.get_pose()
 
     def set_pose(self, *args, **kwargs):
+        mode = self.get_safety_mode()
+        if mode>2:
+            raise RobotException(SafetyStatus(mode))
         return self.robot.set_pose(*args, **kwargs)
     
     def movels(self, *args, **kwargs):
+        mode = self.get_safety_mode()
+        if mode>2:
+            raise RobotException(SafetyStatus(mode))
         return self.robot.movels(*args, **kwargs)
     
     def movel(self, *args, **kwargs):
+        mode = self.get_safety_mode()
+        if mode>2:
+            raise RobotException(SafetyStatus(mode))
         return self.robot.movel(*args, **kwargs)
     
     def movej(self, *args, **kwargs):
+        mode = self.get_safety_mode()
+        if mode>2:
+            raise RobotException(SafetyStatus(mode))
         return self.robot.movej(*args, **kwargs)
     
     def get_safety_mode(self):
@@ -188,18 +227,33 @@ class UR_cam_grip(QObject):
         return self.robot.is_program_running()
 
     def set_orientation_rad(self, *args, **kwargs):
+        mode = self.get_safety_mode()
+        if mode>2:
+            raise RobotException(SafetyStatus(mode))
         self.robot.set_orientation(*args, **kwargs)
     
     def add_pose_base(self, *args, **kwargs):
+        mode = self.get_safety_mode()
+        if mode>2:
+            raise RobotException(SafetyStatus(mode))
         return self.robot.add_pose_base(*args, **kwargs)
     
     def translate(self, *args, **kwargs):
+        mode = self.get_safety_mode()
+        if mode>2:
+            raise RobotException(SafetyStatus(mode))
         return self.robot.translate(*args, **kwargs)
     
     def translate_tool(self, *args, **kwargs):
+        mode = self.get_safety_mode()
+        if mode>2:
+            raise RobotException(SafetyStatus(mode))
         return self.robot.translate_tool(*args, **kwargs)
 
     def bump(self, *args, **kwargs):
+        mode = self.get_safety_mode()
+        if mode>2:
+            raise RobotException(SafetyStatus(mode))
         self.robot.bump(*args, **kwargs)
 
 

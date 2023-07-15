@@ -67,6 +67,7 @@ class URRTMonitor(threading.Thread):
         self._tcp_speed = None
         self._tcp = None
         self._robot_mode = None
+        self._safety_mode = None
         self._joint_modes = None
         self._digital_outputs = None
         self._program_state = None
@@ -283,6 +284,7 @@ class URRTMonitor(threading.Thread):
             self._tcp_force = np.array(unp[67:73])
             self._tcp = np.array(unp[73:79])            
             self._joint_current = np.array(unp[43:49])
+            self._safety_mode = unp[101]
             if self.urFirm >= 3.1:
                 self._joint_temperature = np.array(unp[86:92])
                 self._joint_voltage = np.array(unp[124:130])
@@ -378,7 +380,8 @@ class URRTMonitor(threading.Thread):
                 joint_voltage=self._joint_voltage,
                 joint_current=self._joint_current,
                 joint_modes=self._joint_modes,
-                robot_modes=self._robot_mode,
+                robot_mode=self._robot_mode,
+                safety_mode=self._safety_mode,
                 main_voltage=self._main_voltage,
                 robot_voltage=self._robot_voltage,
                 robot_current=self._robot_current,

@@ -18,7 +18,7 @@ import math3d as m3d
 import logging
 import time
 import numpy as np
-from robUR import SafetyStatus
+from robUR import SafetyMode
 
 class URRobot(urrobot.URRobot):
 
@@ -42,7 +42,9 @@ class URRobot(urrobot.URRobot):
 
         self.rtmon = None
         if use_rt:
-            self.rtmon = self.get_realtime_monitor()
+            self.rtmon = urrtmon.URRTMonitor(self.host, self.urFirm)  # som information is only available on rt interface
+            self.rtmon.start()
+            self.rtmon.set_csys(self.csys)
         # precision of joint movem used to wait for move completion
         # the value must be conservative! otherwise we may wait forever
         self.joinEpsilon = 0.01
@@ -59,7 +61,7 @@ class Robot(robot.Robot):
         logging.basicConfig(format=FORMAT)
         self.logger = logging.getLogger("myrobot")
         self.urFirm = urFirm
-        if SafetyStatus(self.get_safety_mode()) is not SafetyStatus.IS_NORMAL_MODE:
+        if SafetyMode(self.get_safety_mode()) is not SafetyMode.IS_NORMAL_MODE:
             print("Robot is not at NORMAL_MODE.")
          
         #self.secmon = ursecmon.SecondaryMonitor(self.host)  # data from robot at 10Hz
@@ -68,6 +70,10 @@ class Robot(robot.Robot):
         #self.rtmon.start()
 
     def get_safety_mode(self):
+        dt = self.rtmon.get_all_data()
+        return dt["safety_mode"]
+
+    def get_safety_status(self):
         dt = self.rtmon.get_all_data()
         return dt["safety_status"]
     

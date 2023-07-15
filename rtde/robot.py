@@ -19,7 +19,7 @@ with open(os.path.join(text_file_path, '..', 'urscripts', 'checkdistance.script'
     CheckdistanceScript = file.read()
 sys.path.append(os.path.join(text_file_path, '..', 'common'))
 
-from robUR import SafetyStatus
+from robUR import SafetyMode
 
 
 #### Standard orientations.
@@ -75,7 +75,7 @@ class Robot():
         
         self.orientation = m3d_Zdown_cameraY
         self.rr = rr.RTDEReceiveInterface(IP)
-        if SafetyStatus(self.get_safety_mode()) is not SafetyStatus.IS_NORMAL_MODE:
+        if SafetyMode(self.get_safety_mode()) is not SafetyMode.IS_NORMAL_MODE:
             print("Robot is not at NORMAL_MODE.")
         else:
             self.rc = rc.RTDEControlInterface(IP)
