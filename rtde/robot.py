@@ -1,7 +1,6 @@
 ''' This program is to define UR robot with Robotiq gripper and camera '''
 #import time
 import sys
-sys.path.append('..')
 
 from robotiq_gripper_control import RobotiqGripper
 
@@ -15,10 +14,13 @@ import logging
 import math
 import time
 import os
-
 text_file_path = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(text_file_path, '..', 'urscripts', 'checkdistance.script'), 'r') as file:
     CheckdistanceScript = file.read()
+sys.path.append(os.path.join(text_file_path, '..', 'common'))
+
+from robUR import SafetyStatus
+
 
 #### Standard orientations.
 # orient the tool point -Z axis of the base and keep the y aixs the same with y of base coordinate.
@@ -72,14 +74,20 @@ class Robot():
         self.logger = logging.getLogger(IP)
         
         self.orientation = m3d_Zdown_cameraY
-        self.rc = rc.RTDEControlInterface(IP)
         self.rr = rr.RTDEReceiveInterface(IP)
+        if SafetyStatus(self.get_safety_mode()) is not SafetyStatus.IS_NORMAL_MODE:
+            print("Robot is not at NORMAL_MODE.")
+        else:
+            self.rc = rc.RTDEControlInterface(IP)
+            self.set_tcp(self.tcp)
+            self.set_payload(1.35, (-0.003,0.01,0.037))
         #self.rio = rio.RTDEIOInterface(IP)
 
         #self.__TCP2CAMdistance = 0.15
         self.IP = IP
-        self.set_tcp(self.tcp)
-        self.set_payload(1.35, (-0.003,0.01,0.037))
+    
+    def get_safety_mode(self):
+        return self.rr.getSafetyMode()
 
     def terminate(self):
         self.rc.stopScript()
@@ -94,19 +102,27 @@ class Robot():
         self.csys = transform
 
     def get_tcp(self):
+        if not hasattr(self, 'rc'):
+            raise RobotException("Robot is not at NORMAL_MODE.")
         pose = self.rc.getTCPOffset()
         return pose
 
     def set_payload(self, weight, dir):
+        if not hasattr(self, 'rc'):
+            raise RobotException("Robot is not at NORMAL_MODE.")
         return self.rc.setPayload(weight, dir)
 
     def set_tcp(self, tcp):
+        if not hasattr(self, 'rc'):
+            raise RobotException("Robot is not at NORMAL_MODE.")
         return self.rc.setTcp(tcp)
 
     def bump(self, x=0, y=0, z=0, backoff=0, wait=True):
         #data = CheckdistanceScript
         data = CheckdistanceScript.replace('__replace__', f'[{x}, {y}, {z}, 0, 0, 0]')
         data = data.replace('__backoff__', f'{backoff}')
+        if not hasattr(self, 'rc'):
+            raise RobotException("Robot is not at NORMAL_MODE.")
         self.rc.sendCustomScript(data)
         while not self.rr.is_program_running():
             time.sleep(0.01)
@@ -141,6 +157,8 @@ class Robot():
     def movels(self, path, wait=True):
         # with tool poses that includes acceleration, speed and blend for each position
         # https://sdurobotics.gitlab.io/ur_rtde/api/api.html#rtde-control-interface-api
+        if not hasattr(self, 'rc'):
+            raise RobotException("Robot is not at NORMAL_MODE.")
         self.rc.moveL(path, asynchronous=not wait)
         if wait:
             pose = self.get_pose()
@@ -157,7 +175,8 @@ class Robot():
                 tpose.append(l[3])
                 tpose.append(l[4])
                 tpose.append(l[5])
-        print(tpose)
+        if not hasattr(self, 'rc'):
+            raise RobotException("Robot is not at NORMAL_MODE.")
         self.rc.moveL(tpose, acceleration=acc, speed=vel, asynchronous=not wait)
         if wait:
             pose = self.get_pose()
@@ -166,12 +185,16 @@ class Robot():
 
     
     def movej(self, q, vel=0.1, acc=0.1, wait=True):
+        if not hasattr(self, 'rc'):
+            raise RobotException("Robot is not at NORMAL_MODE.")
         self.rc.moveJ(q, acceleration=acc, speed=vel, asynchronous=not wait)
     
     def is_protective_stopped(self):
         return self.rr.isProtectiveStopped()   
 
     def is_running(self):
+        if not hasattr(self, 'rc'):
+            raise RobotException("Robot is not at NORMAL_MODE.")
         return self.rc.isProgramRunning()
 
     def set_orientation_rad(self, orient, acc=0.01, vel=0.01, wait=True):
@@ -219,6 +242,8 @@ class Robot():
         speed = [x, y, z, rx, ry, rz]
         for i in range(len(speed)):
             speed[i] = speed[i] * vel
+        if not hasattr(self, 'rc'):
+            raise RobotException("Robot is not at NORMAL_MODE.")
         self.rc.moveUntilContact(speed)
         self.rc.stopScript()
 

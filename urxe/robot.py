@@ -1,6 +1,8 @@
 import sys
 import os
 text_file_path = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(text_file_path, '..', 'common'))
+
 # get the python-urx from below:
 # https://github.com/Byeongdulee/python-urx
 sys.path.append(os.path.join(text_file_path, '..', '..', 'python-urx'))
@@ -16,6 +18,7 @@ import math3d as m3d
 import logging
 import time
 import numpy as np
+from robUR import SafetyStatus
 
 class URRobot(urrobot.URRobot):
 
@@ -56,11 +59,18 @@ class Robot(robot.Robot):
         logging.basicConfig(format=FORMAT)
         self.logger = logging.getLogger("myrobot")
         self.urFirm = urFirm
+        if SafetyStatus(self.get_safety_mode()) is not SafetyStatus.IS_NORMAL_MODE:
+            print("Robot is not at NORMAL_MODE.")
+         
         #self.secmon = ursecmon.SecondaryMonitor(self.host)  # data from robot at 10Hz
         #self.rtmon = urrtde.URRTMonitor(self.host)
         #self.rtmon = urrtmon.URRTMonitor(self.host, self.urFirm)
         #self.rtmon.start()
 
+    def get_safety_mode(self):
+        dt = self.rtmon.get_all_data()
+        return dt["safety_status"]
+    
     def get_tcp(self):
         pose = self.secmon.get_tcp()
         return pose

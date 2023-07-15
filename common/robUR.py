@@ -7,6 +7,7 @@ import logging
 import math
 import math3d as m3d
 import os
+from enum import Enum
 import sys
 sys.path.append('..')
 from common.urdashboard import dashboard
@@ -52,6 +53,20 @@ m3d_Zdown_cameraYm = [[1, 0, 0], [0, -1, 0], [0, 0, -1]]
 
 # Define your own robot to include camera and dashboard....
 # edit all these basic functions to work.
+
+class SafetyStatus(Enum):
+    IS_NORMAL_MODE = 1
+    IS_REDUCED_MODE = 2
+    IS_PROTECTIVE_STOPPED = 3
+    IS_RECOVERY_MODE = 4
+    IS_SAFEGUARD_STOPPED = 5
+    IS_SYSTEM_EMERGENCY_STOPPED = 6
+    IS_ROBOT_EMERGENCY_STOPPED = 7
+    IS_EMERGENCY_STOPPED = 8
+    IS_VIOLATION = 9
+    IS_FAULT = 10
+    IS_STOPPED_DUE_TO_SAFETY = 11
+
 class UR_cam_grip(QObject):
     # unit of position vector : meter.
     _TCP2CAMdistance = 0.12
@@ -107,8 +122,14 @@ class UR_cam_grip(QObject):
 
         #self.__TCP2CAMdistance = 0.15
         self.robot.IP = IP
-        self.set_tcp(self.tcp)
-        self.set_payload(1.35, (-0.003,0.01,0.037))
+        try:
+            self.set_tcp(self.tcp)
+        except:
+            pass
+        try:
+            self.set_payload(1.35, (-0.003,0.01,0.037))
+        except:
+            pass
         self.dashboard = dashboard(self.robot)
 
     def terminate(self):
@@ -150,6 +171,9 @@ class UR_cam_grip(QObject):
     
     def movej(self, *args, **kwargs):
         return self.robot.movej(*args, **kwargs)
+    
+    def get_safety_mode(self):
+        return self.robot.get_safety_mode()
     
     def get_status(self):
         return self.dashboard.get_status()
