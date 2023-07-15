@@ -54,6 +54,7 @@ class SecondaryMonitor(Thread):
     def __init__(self, host):
         Thread.__init__(self)
         self.logger = logging.getLogger("ursecmon")
+        self.daemon = True
         self._parser = ParserUtils()
         self._dict = {}
         self._dictLock = Lock()
