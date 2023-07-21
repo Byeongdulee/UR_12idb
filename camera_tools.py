@@ -49,10 +49,10 @@ def run_measuredistance(rob):
 
 def run_centering(rob):
     rob.camera._running = True
-    rob.bring_QR_to_camera_center()
+    rob.bring_QR_to_camera_center(referenceName = "AT")
     rob.camera._running = False
 
-def run_centering1(rob):
+def run_centering_1QR(rob):
     rob.camera._running = True
     rob.bring_QR_to_camera_center(referenceName = "1QR")
     rob.camera._running = False
@@ -444,7 +444,7 @@ def showcamera(rob, codetype = 0, obj_distance=0.12):
             print(f"Center position is at [{QRpos}].")
             print(f"Distance from camera is {QRdist} m.")
         if key == 116: #t
-            rob.tilt_camera_down()
+            rob.camera_face_down()
         if key == 77: #M
             t = Thread(target=run_measuredistance, args=(rob,))
             t.start()
@@ -456,10 +456,10 @@ def showcamera(rob, codetype = 0, obj_distance=0.12):
                 dX = -dx/rob.camera.camera_f*QRdist
                 dY = dy/rob.camera.camera_f*QRdist
                 rob.move_toward_camera(distance=0, north=dY, east=dX, acc=0.5, vel=0.5)
-            if not isambient:
+            #if not isambient:
                 t = Thread(target=run_centering, args=(rob,))
-            else:
-                t = Thread(target=run_centering1, args=(rob,))
+            #else:
+            #    t = Thread(target=run_centering_1QR, args=(rob,))
             t.start()
             #t.join()
         if key == 27:

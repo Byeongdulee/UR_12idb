@@ -57,7 +57,11 @@ def isblurry(image):
     # 72:128
     ysize = 72
     xsize = 128
-    gray = cv2.cvtColor(image[(size[0]/2-ysize):(size[0]/2+ysize-1), (size[1]/2-xsize):(size[1]/2+xsize-1)], cv2.COLOR_BGR2GRAY)
+    y0 = int(size[0]/2-ysize)
+    y1 = int(size[0]/2+ysize-1)
+    x0 = int(size[1]/2-xsize)
+    x1 = int(size[1]/2+xsize-1)
+    gray = cv2.cvtColor(image[y0:y1, x0:x1], cv2.COLOR_BGR2GRAY)
     fm = variance_of_laplacian(gray)
     val = False
     if fm<focus_threshold:
@@ -103,6 +107,9 @@ def decodeAT(img=[], F=[], cam_f=camera_f, imgH=default_imgH, imgV=default_imgV)
     if len(img)==0:
         print("empty image")
         return
+    if isblurry(img):
+        print("Image is not focused yet.")
+        return None
     if len(F)==0:    
         F = [[cam_f, 0, imgH/2], [0, cam_f, imgV/2], [0, 0, 1]]
     fx = F[0][0]
@@ -189,7 +196,7 @@ class camera(object):
 
     def capture(self):
         resp=None
-
+        self.image = None
         if len(self.IP)>0:
             #Try to get camera image with provided robot IP
             try:
@@ -220,6 +227,8 @@ class camera(object):
 
     def decodeAT(self):
         r = decodeAT(self.image, self.intrinsic_mtx, self.camera_f, self.imgH, self.imgV)
+        if isinstance(r, type(None)):
+            return None
         if type(self.intrinsic_mtx) is not np.ndarray:
             if len(self.intrinsic_mtx)==0:
                 K = np.array([[self.camera_f, 0, self.imgH/2], [0, self.camera_f, self.imgV/2], [0, 0, 1]])
@@ -234,6 +243,7 @@ class camera(object):
 #            print(r.pose_t.transpose())
 #            print(r.homography)
 #            print(pos)
+            self.getATdistance(r)
         else:
             r = None
             pos = None
@@ -254,7 +264,8 @@ class camera(object):
             dist.append(d)
         self.QRdistance = self.AT_physical_size/np.mean(dist)*self.camera_f
         self.QRposition = r.center
-        self.QRsize = self.AT_physical_size
+        self.QRsize = [math.dist(pgpnts[0], pgpnts[1]), 
+                       math.dist(pgpnts[1], pgpnts[2])]
         return self.QRdistance
 
     def H2RT(self, H):
@@ -287,8 +298,10 @@ class camera(object):
 
         qrsize = [0, 0]
         if len(QRdata)>0:
-            showQRcode(QRdata, imgdata)
-        else:
+            data, rectcoord, qrsize, dist = self.decodeQR()
+            return data, rectcoord, qrsize, dist
+        r = self.decodeAT()
+        if r is None:
             self.QRdata = data
             self.QRposition = rectcoord
             self.QRsize = qrsize            
@@ -296,45 +309,7 @@ class camera(object):
             self.QRcoordinates = pgpnts
             return data, rectcoord, qrsize, dist
 
-        height, width, channels = imgdata.shape
-        if height < imgheight/2:
-            return (False, -1)
-
-        p0 = (int(p0in[0]/imgwidth*width), int(p0in[1]/imgheight*height))
-        p1 = (int(p1in[0]/imgwidth*width), int(p1in[1]/imgheight*height))
-        cv2.line(imgdata, p0, p1, color, thickness) 
-        for qrd in QRdata:
-            rectcoord = [qrd.rect.left+qrd.rect.width/2,  qrd.rect.top+qrd.rect.height/2]
-            data = qrd.data
-            qrsize[0] = qrd.rect.width
-            qrsize[1] = qrd.rect.height
-
-            pg = qrd.polygon
-            pgpnts = []
-            for pnts in pg:
-                pgpnts.append([pnts.x, pnts.y])
-            for k in range(4):
-                ind1 = k%4
-                ind2 = (k+1)%4
-                x0 = pgpnts[ind1][0]
-                y0 = pgpnts[ind1][1]
-                x1 = pgpnts[ind2][0]
-                y1 = pgpnts[ind2][1]
-                d = math.sqrt((x0-x1)**2+(y0-y1)**2)
-                dist.append(d)
-            break
-            #print(f"Edge lengthes of QR are {dist}")
-        self.QRtype = "1QR"
-        self.QRdistance = self.QR_physical_size/np.mean(dist)*self.camera_f
-        self.image = Image.fromarray(imgdata)
-        self.QRdata = data
-        self.QRposition = rectcoord
-        self.QRsize = qrsize
-        self.QRedgelength = dist
-        self.QRcoordinates = pgpnts
-        return data, rectcoord, qrsize, dist
-
-    def decode2QR(self, p0in=(0,0), p1in=(0,0), imgwidth=default_imgH, imgheight=default_imgV, color = (0, 0, 255), thickness = 1):
+    def decodeQR(self, p0in=(0,0), p1in=(0,0), imgwidth=default_imgH, imgheight=default_imgV, color = (0, 0, 255), thickness = 1):
         #imgdata = self.image
         opencvimage = np.array(self.image)
         imgdata = opencvimage[:,:,::-1].copy()
@@ -349,9 +324,8 @@ class camera(object):
         pgpnts = []
 
         qrsize = [0, 0]
-        if len(QRdata)>1:
-            showQRcode(QRdata, imgdata)
-        else:
+        # no decoded results
+        if len(QRdata)==0:
             self.QRtype = "2QR"
             self.QRdata = data
             self.QRposition = rectcoord
@@ -359,6 +333,49 @@ class camera(object):
             self.QRedgelength = dist
             self.QRcoordinates = pgpnts
             return data, rectcoord, qrsize, dist
+
+        showQRcode(QRdata, imgdata)
+        # single QR
+        if len(QRdata)==1:
+            height, width, channels = imgdata.shape
+            if height < imgheight/2:
+                return (False, -1)
+
+            p0 = (int(p0in[0]/imgwidth*width), int(p0in[1]/imgheight*height))
+            p1 = (int(p1in[0]/imgwidth*width), int(p1in[1]/imgheight*height))
+            cv2.line(imgdata, p0, p1, color, thickness) 
+            for qrd in QRdata:
+                rectcoord = [qrd.rect.left+qrd.rect.width/2,  qrd.rect.top+qrd.rect.height/2]
+                data = qrd.data
+                qrsize[0] = qrd.rect.width
+                qrsize[1] = qrd.rect.height
+
+                pg = qrd.polygon
+                pgpnts = []
+                for pnts in pg:
+                    pgpnts.append([pnts.x, pnts.y])
+                for k in range(4):
+                    ind1 = k%4
+                    ind2 = (k+1)%4
+                    x0 = pgpnts[ind1][0]
+                    y0 = pgpnts[ind1][1]
+                    x1 = pgpnts[ind2][0]
+                    y1 = pgpnts[ind2][1]
+                    d = math.sqrt((x0-x1)**2+(y0-y1)**2)
+                    dist.append(d)
+                break
+                #print(f"Edge lengthes of QR are {dist}")
+            self.QRtype = "1QR"
+            self.QRdistance = self.QR_physical_size/np.mean(dist)*self.camera_f
+            self.image = Image.fromarray(imgdata)
+            self.QRdata = data
+            self.QRposition = rectcoord
+            self.QRsize = qrsize
+            self.QRedgelength = dist
+            self.QRcoordinates = pgpnts
+            return data, rectcoord, qrsize, dist
+
+        # double QR.
 
         height, width, channels = imgdata.shape
         if height < imgheight/2:

@@ -98,7 +98,7 @@ class UR_cam_grip(QObject):
     # unit of position vector : meter.
     _TCP2CAMdistance = 0.12
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
-    camtcp = [0, 0.04, 0.015, -math.pi/180*30, 0, 0]
+    camtcp = [0, 0.0433, 0.015, -math.pi/180*30, 0, 0]
 
     def __init__(self, name = 'UR3', package='urxe', fingertype=1, cameratype=1):
         super().__init__()
