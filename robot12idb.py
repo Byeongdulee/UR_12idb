@@ -839,23 +839,12 @@ class UR3(UR):
         if not self.camera._running:
             self.camera.capture()
         self.camera.decode()
-        isDistanceIn = False
         isNorthIn = False
         isEastIn = False
-        distance = 0.01
         edist = 0.01
         ndist = 0.01
-        prevndir = 0
-        prevedir = 0
-        prevdir = 0
-        timeout = 1
-        target_distance = 180
-        # if referenceName == "2QR":
-        #     target_QRedgelength = 100   # this is the edgelength of the 2QR references.
-        # else:
-        #     target_QRedgelength = 120   # this is the edgelength of a QR code at the optimum distance from a camera.
-        #     target_distance = 150 #20mm
-        #if not hasattr(self.camera, 'QRposition') or not hasattr(self.camera, 'QRsize'):
+        pixel_distance_tolerance = 3 # 3 pixel off is acceptable...
+
         if hasattr(self.camera, 'QRtiltangle'):
 #            print(f"Tilt angle is {self.camera.QRtiltangle}")
             if abs(self.camera.QRtiltangle) < 100:
@@ -873,8 +862,11 @@ class UR3(UR):
             rtn = self.update_camera_info()
         if rtn == False:
             return False
+        
+        
         failcount = 0
-        while not isDistanceIn or not isNorthIn or not isEastIn:
+        
+        while not isNorthIn or not isEastIn:
 #                if not hasattr(self.camera, 'QRposition') or not hasattr(self.camera, 'QRsize'):
 #                    continue
             if self.camera.referenceName == "2QR":
@@ -888,50 +880,35 @@ class UR3(UR):
             if len(self.camera.QRposition)>0 and len(self.camera.QRsize)>0:
                 if self.camera.QRsize[0] == 0:
                     continue
-                imsize = self.camera.image.shape
-                qs = sum(self.camera.QRsize)/len(self.camera.QRsize)
-                qs = self.camera.QRdistance
-                if abs(qs-target_distance) <2:
-                    distance = 0.0
-                    isDistanceIn = True
-                if qs-target_distance < 0:
-                    dir = -1
-                else:
-                    dir = 1
-                distance = abs(qs-target_distance)/1000
+                if isinstance(self.camera.image, type(None)):
+                    continue
+                h, w, _ = self.camera.image.shape
 
-                if self.camera.QRposition[0]-imsize[0]/2 < 0:
+                if self.camera.QRposition[0]-w/2 < 0:
                     edir = -1
                 else:
                     edir = 1
-                if self.camera.QRposition[1]-imsize[1]/2 < 0:
+                if self.camera.QRposition[1]-h/2 < 0:
                     ndir = 1
                 else:
                     ndir = -1
                 # QRcode size is 22mm x 22mm
-                ndist = abs(self.camera.QRposition[1]-imsize[1]/2)/self.camera.QRsize[0]*self.camera.AT_physical_size
-                edist = abs(self.camera.QRposition[0]-imsize[0]/2)/self.camera.QRsize[0]*self.camera.AT_physical_size
-                print(f"distance is {distance}")
-                print(f"ndist is {ndist}")
-                print(f"edist is {edist}")
+                ndist = abs(self.camera.QRposition[1]-h/2)/self.camera.QRsize[0]*self.camera.AT_physical_size
+                edist = abs(self.camera.QRposition[0]-w/2)/self.camera.QRsize[0]*self.camera.AT_physical_size
+                # print(f"distance is {distance}")
 
-                if distance < 5:
-                    if abs(edist)<0.002 and abs(ndist)<0.002:
-                        print("Done. QR code is centered.")
-                        break
-
-                if abs(self.camera.QRposition[0]-imsize[0]/2) <5:
+                if abs(self.camera.QRposition[0]-w/2) < pixel_distance_tolerance:
                     edist = 0.0
                     isEastIn = True
 
-                if abs(self.camera.QRposition[1]-imsize[1]/2) <5:
+                if abs(self.camera.QRposition[1]-h/2) < pixel_distance_tolerance:
                     ndist = 0.0
                     isNorthIn = True
-                print(dir*distance, "North = ", ndir*ndist, "East =", edir*edist)
-                self.move_toward_camera(distance=dir*distance, north=ndir*ndist, east=edir*edist, acc=acc, vel=vel)
+                print("North = ", ndir*ndist, "East =", edir*edist)
+                self.move_toward_camera(distance=0, north=ndir*ndist, east=edir*edist, acc=acc, vel=vel)
             else:
-                print(dir*distance, "North2 = ", ndir*ndist, "East2 =", edir*edist)
-                self.move_toward_camera(distance=-dir*distance, north=-ndir*ndist, east=-edir*edist, acc=acc, vel=vel)
+                print("North2 = ", ndir*ndist, "East2 =", edir*edist)
+                self.move_toward_camera(distance=0, north=-ndir*ndist, east=-edir*edist, acc=acc, vel=vel)
                 failcount = failcount+1
                 if failcount>5:
                     break
@@ -1179,4 +1156,7 @@ def auto_align_12idb_standard_holder2(rob):
     rob.transport_from_default_to_samplestage_up()
     rob.mvr2z(-0.1)
     rob.camera_face_down()
-    rob.center_camera2apriltag()
+    rob.bring_QR_to_camera_center()
+    rob.fingertip2camera()
+    h = rob.measureheight()
+    

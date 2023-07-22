@@ -104,12 +104,12 @@ def decodeAT(img=[], F=[], cam_f=camera_f, imgH=default_imgH, imgV=default_imgV)
                         refine_edges=1,
                         decode_sharpening=0.25,
                         debug=0)
+    if isinstance(img, type(None)):
+        return []
     if len(img)==0:
         print("empty image")
         return
-    if isblurry(img):
-        print("Image is not focused yet.")
-        return None
+
     if len(F)==0:    
         F = [[cam_f, 0, imgH/2], [0, cam_f, imgV/2], [0, 0, 1]]
     fx = F[0][0]
@@ -157,6 +157,12 @@ class camera(object):
             self.connectiontype = 'usb'
         else:
             self.connectiontype = 'ip'
+    
+    def isblurry(self):
+        if self.image is not None:
+            return isblurry(self.image)
+        else:
+            print("No captured image.")
     
     def scanfocus(self):
         if len(self.IP)>0:
@@ -288,15 +294,16 @@ class camera(object):
         return R, T
 
     def decode(self, p0in=(0,0), p1in=(0,0), imgwidth=default_imgH, imgheight=default_imgV, color = (0, 0, 255), thickness = 1):
-        opencvimage = np.array(self.image)
-        imgdata = opencvimage[:,:,::-1].copy()
-        QRdata = decodeQR(imgdata)
         rectcoord = []
         data = []
         dist = []
         pgpnts = []
-
         qrsize = [0, 0]
+        if isinstance(self.image, type(None)):
+            return data, rectcoord, qrsize, dist
+        opencvimage = np.array(self.image)
+        imgdata = opencvimage[:,:,::-1].copy()
+        QRdata = decodeQR(imgdata)
         if len(QRdata)>0:
             data, rectcoord, qrsize, dist = self.decodeQR()
             return data, rectcoord, qrsize, dist

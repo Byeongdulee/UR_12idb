@@ -594,7 +594,7 @@ class UR(UR_cam_grip):
 # special functions
 
     def measureheight(self): # measure height by bumping along -z direction.
-        back_up = 0.01
+        back_up = 0.0
         v0 = self.get_xyz()
         self.bump(z=-1, backoff=back_up)
         v1 = self.get_xyz()
