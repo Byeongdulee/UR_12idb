@@ -905,10 +905,10 @@ class UR3(UR):
                     ndist = 0.0
                     isNorthIn = True
                 print("North = ", ndir*ndist, "East =", edir*edist)
-                self.move_toward_camera(distance=0, north=ndir*ndist, east=edir*edist, acc=acc, vel=vel)
+                self.move_toward_camera(distance=0, north=ndir*ndist/2, east=edir*edist/2, acc=acc, vel=vel)
             else:
                 print("North2 = ", ndir*ndist, "East2 =", edir*edist)
-                self.move_toward_camera(distance=0, north=-ndir*ndist, east=-edir*edist, acc=acc, vel=vel)
+                self.move_toward_camera(distance=0, north=-ndir*ndist/2, east=-edir*edist/2, acc=acc, vel=vel)
                 failcount = failcount+1
                 if failcount>5:
                     break
@@ -1159,4 +1159,5 @@ def auto_align_12idb_standard_holder2(rob):
     rob.bring_QR_to_camera_center()
     rob.fingertip2camera()
     h = rob.measureheight()
+    print(f"The TCP is from {h}m above a surface.")
     
