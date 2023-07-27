@@ -33,9 +33,14 @@ from common.urcamera import Detection as atDET
 from common.urcamera import cal_AT2pose
 from common import utils
 import camera_tools as cameratools
-
+from common.tc_pipet import pipet
 ## Beamline specific variables
 april_tag_size = {'heater': 0.0075, 'standard':0.015}
+
+
+## Exception handling....
+class ToolChangerException(Exception):
+    pass
 
 class UR3(UR):
     # unit of position vector : meter.
@@ -1161,3 +1166,133 @@ def auto_align_12idb_standard_holder2(rob):
     h = rob.measureheight()
     print(f"The TCP is from {h}m above a surface.")
     
+
+class UR5(UR):
+    # unit of position vector : meter.
+    sigFinger = pyqtSignal(str)
+    sigMoving = pyqtSignal(bool)
+    sigFingerPosition = pyqtSignal(str)
+    sigObject_onFinger = pyqtSignal(bool)
+    sigRobotCommand = pyqtSignal(str)
+    sigRobotPosition = pyqtSignal(numpy.ndarray)
+
+    Waypoint_tool3_p = [-0.71556695,  0.00796828,  0.209, -2.18919547,  2.23820588, -0.00663184]
+    Waypoint_pipet_p = [-0.59889272,  0.00900487,  0.208, -2.18934897,  2.23850674, -0.00610946]
+    Waypoint_gripper_p = [-0.48683908,  0.01013423,  0.208, -2.18894075,  2.23858863, -0.00619396]
+
+    _TCP2CAMdistance = 0.12
+#    tcp = [0.0,0.0,0.167,0.0,0.0,0.0]
+    tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
+#    camtcp = [-0.001, 0.04, 0.015, -math.pi/180*30, 0, 0]
+    camtcp = [0, 0.0433, 0.015, -math.pi/180*30, 0, 0]
+
+    def __init__(self, name = 'UR5', package=ROBOT_PYTHON_PACKAGE, fingertype=1, cameratype=1):
+# definition of Cartesian Axis of UR3 at 12idb.
+# X : positive - Out board
+# X : negative - In board
+# Y : positive - Along X-ray
+# Y : negative - Again X-ray
+
+        try:
+            #with open('../RobotList/list_of_robots.json') as json_file:
+            jsname = 'list_of_robots.json'
+            if os.path.exists('RobotList'):
+                fn = os.path.join('RobotList', jsname)
+            if os.path.exists('../RobotList'):
+                fn = os.path.join('../RobotList', jsname)
+            with open(fn) as json_file:
+                IPlist = json.load(json_file)
+            IP = IPlist[name]
+        except FileNotFoundError:
+            print("Please provide the IP number of your robot control box.")
+            return
+        except KeyError:
+            print(f"{name} does not exist in ../RobotList/list_of_robots.json")
+            return
+
+        super(UR5, self).__init__(IP, package=package, fingertype=fingertype, cameratype=cameratype)
+
+        self.name = name
+        if hasattr(self, 'camera'):
+            self.camera.AT_physical_size = april_tag_size['heater']
+        self.pipet = pipet()
+        self.tool_engaged = ""
+    
+    def set_toolchanger_unlock(self):
+        self.robot.set_digital_out(0, 1)    
+
+    def set_toolchanger_lock(self):
+        self.robot.set_digital_out(0, 0)
+    
+    def engage(self, tool='pipet', for_disengage=False):
+        if self.robot.get_digital_out(0)==0: # if a tool is already engaged.
+            if not for_disengage: # if this command is not for dis_engaging the tool.
+                raise ToolChangerException('Already a tool is engaged.')
+        p = []
+        if tool=='pipet':
+            toolp = self.Waypoint_pipet_p
+        if tool=='gripper':
+            toolp = self.Waypoint_gripper_p
+        if tool=='tool3':
+            toolp = self.Waypoint_tool3_p
+        for ind, val in enumerate(toolp):
+            if ind != 2:
+                p.append(val)
+            else:
+                p.append(val+0.05)
+        # if current position is lower than the tool up position, move the tool up first to avoid any collision.
+        pcurrent = self.get_xyz()
+        if pcurrent[2]<toolp[2]:
+            self.move2z(p[2])
+        self.moveto(p)
+        #self.bump(z=-0.1)
+        self.mvr2z(-0.048, vel=0.05)
+        if for_disengage:
+            self.set_toolchanger_unlock()
+        else:
+            self.set_toolchanger_lock()
+        self.moveto(p)
+        self.tool_engaged = tool
+        if for_disengage:
+            if tool=='pipet':
+                self.pipet.disconnect()
+            self.set_tool_communication_off()
+        else:
+            if tool=='pipet':
+                self.set_tool_communication(self.pipet)
+                self.pipet.connect(self.robot.IP)        
+            if tool=='gripper':
+                self.set_tool_communication(self.finger)
+
+    def disengage(self):
+        assert(self.tool_engaged in ["pipet", "gripper", "tool3"])
+        self.engage(self.tool_engaged, True)
+
+    def engage_pipet(self, for_disengage=False):
+        self.engage('pipet', for_disengage=for_disengage)
+        if for_disengage:
+            self.pipet.disconnect()
+            self.set_tool_communication_off()
+        else:
+            self.set_tool_communication(self.pipet)
+            self.pipet.connect()
+
+    def disengage_pipet(self):
+        self.engage_pipet(True)
+    
+    def engage_gripper(self, for_disengage=False):
+        self.engage('gripper', for_disengage=for_disengage)
+        if for_disengage:
+            self.set_tool_communication_off()
+        else:
+            self.set_tool_communication(self.finger)
+
+    def disengage_gripper(self):
+        self.engage_gripper(True)
+    
+    def engage_tool3(self, for_disengage=False):
+        self.engage('tool3', for_disengage=for_disengage)
+        self.set_tool_communication_off()
+
+    def disengage_tool3(self):
+        self.engage_tool3(True)

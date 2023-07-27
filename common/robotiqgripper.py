@@ -50,6 +50,11 @@ class RobotiqGripper:
         self._max_speed = 255
         self._min_force = 0
         self._max_force = 255
+        self._comm_setting = {"baud_rate": 115200, 
+                      "parity": 0,
+                      "stop_bits": 1,
+                      "rx_idle_chars": 1.5,
+                      "tx_idle_chars": 3.5}
 
     def connect(self, hostname: str, port: int, socket_timeout: float = 2.0) -> None:
         """Connects to a gripper at the given address.

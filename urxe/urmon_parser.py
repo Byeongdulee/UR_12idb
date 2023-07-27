@@ -108,6 +108,8 @@ class ParserUtils(object):
                 allData["ToolModeInfo"] = self._get_data(pdata, "!iBBBB", ("size", "type", "outputMode", "output0", "output1"))
             elif ptype == 13 and self.version >= (5, 8):
                 allData["SingularityInfo"] = self._get_data(pdata, "!iBBB", ("size", "type", "singularitySeverity", "singularityType"))
+            elif ptype == 14 and self.version >= (5, 8):
+                self.logger.info("ptype 14 is unknown.")
             elif ptype == 20:
                 # this is for version 5.8
                 self.logger.info("ptype 20 is read.")

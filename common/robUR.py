@@ -255,7 +255,17 @@ class UR_cam_grip(QObject):
         if mode>2:
             raise RobotException(SafetyStatus(mode))
         self.robot.bump(*args, **kwargs)
-
+    
+    def set_tool_communication(self, obj): #tool_setting is a dict
+        # rob.set_tool_communication(rob.finger)
+        tool_setting = obj._comm_setting
+        self.robot.set_tool_communication(enabled=True,baud_rate=tool_setting["baud_rate"],
+                                          parity=tool_setting["parity"],
+                                          stop_bits=tool_setting["stop_bits"],
+                                          rx_idle_chars=tool_setting["rx_idle_chars"],
+                                          tx_idle_chars=tool_setting["tx_idle_chars"])        
+    def set_tool_communication_off(self):
+        self.robot.set_tool_communication(enabled=False)
 
 ######## How to use m3d.
 # To rotate in the TCP frame,

@@ -9,5 +9,6 @@ try:
     from . import urpop
     from . import utils
     from . import robUR
+    from . import tc_pipet
 except:
     raise ModuleNotFoundError

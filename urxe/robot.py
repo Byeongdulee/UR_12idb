@@ -132,6 +132,11 @@ class RobotiqGripper(object):
         self.socket_host = socket_host
         self.socket_port = socket_port
         self.socket_name = socket_name
+        self._comm_setting = {"baud_rate": 115200, 
+                      "parity": 0,
+                      "stop_bits": 1,
+                      "rx_idle_chars": 1.5,
+                      "tx_idle_chars": 3.5}
 
     def gripper_action(self, value):
         """
@@ -209,15 +214,15 @@ class RobotiqGripper(object):
                                     self.socket_port,
                                     self.socket_name)
 
-        # Set input and output voltage ranges
-        urscript._set_analog_inputrange(0, 0)
-        urscript._set_analog_inputrange(1, 0)
-        urscript._set_analog_inputrange(2, 0)
-        urscript._set_analog_inputrange(3, 0)
-        urscript._set_analog_outputdomain(0, 0)
-        urscript._set_analog_outputdomain(1, 0)
-        urscript._set_tool_voltage(0)
-        urscript._set_runstate_outputs()
+        # # Set input and output voltage ranges
+        # urscript._set_analog_inputrange(0, 0)
+        # urscript._set_analog_inputrange(1, 0)
+        # urscript._set_analog_inputrange(2, 0)
+        # urscript._set_analog_inputrange(3, 0)
+        # urscript._set_analog_outputdomain(0, 0)
+        # urscript._set_analog_outputdomain(1, 0)
+        # urscript._set_tool_voltage(0)
+        # urscript._set_runstate_outputs()
 
         # Set payload, speed and force
         urscript._set_payload(self.payload)
@@ -279,7 +284,7 @@ class RobotiqGripper(object):
         #print(self.robot.rtmon.state.output_double_register_0)
         
         try:
-            output = (data['MasterBoardData']['analogOutput0']*254)/5
+            output = (data['MasterBoardData']['analogOutput0']*256)/5
         except:
             output = -1
         return output
