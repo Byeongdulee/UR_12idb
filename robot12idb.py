@@ -52,10 +52,10 @@ class ToolChangerException(Exception):
 
 class UR3(UR):
     # unit of position vector : meter.
-    sigFinger = pyqtSignal(str)
+    sigGripper = pyqtSignal(str)
     sigMoving = pyqtSignal(bool)
-    sigFingerPosition = pyqtSignal(str)
-    sigObject_onFinger = pyqtSignal(bool)
+    sigGripperPosition = pyqtSignal(str)
+    sigObject_ongripper = pyqtSignal(bool)
     sigRobotCommand = pyqtSignal(str)
     sigRobotPosition = pyqtSignal(numpy.ndarray)
     #Waypointmagup_q=[5.192646026611328, -0.6902674001506348, 0.557411019002096, -1.440483884220459, -1.5736210981952112, -1.0272372404681605]
@@ -334,13 +334,13 @@ class UR3(UR):
         self.release()
         self.transgrippertomagazine()
         # going down to pick up sample
-        self.sigFinger.emit("Frame %i is picked up.."%self.currentFrame)
+        self.sigGripper.emit("Frame %i is picked up.."%self.currentFrame)
         self.pickup()
         # self.movel(self.magdn_p, acc=0.5, vel=0.5)
         # self.grab()
         # self.movel(self.magup_p, acc=0.5, vel=0.5)
         # transport to the sample stage via a middle point
-        self.sigFinger.emit("Being transported..")
+        self.sigGripper.emit("Being transported..")
 #        self.movej(self.middl_q, acc=0.5, vel=1.0) # inverse_kinematics calculation failed.
         #so I have to find out the joint position of middl.
         self.transport_from_magazine_up_to_samplestage_up()
@@ -382,11 +382,11 @@ class UR3(UR):
         self.transgrippertomagazine()
 
         # going down to pick up sample
-        self.sigFinger.emit("Frame %i is picked up.."%self.currentFrame)
+        self.sigGripper.emit("Frame %i is picked up.."%self.currentFrame)
         self.pickup()
-        if self.sample_onFinger:
+        if self.sample_ongripper:
             # transport to the sample stage via a middle point
-            self.sigFinger.emit("Being transported..")
+            self.sigGripper.emit("Being transported..")
             self.transport_from_magazine_up_to_QR()
     #        self.movels([self.middl_p, self.samup_p], radius=0.01, acc=0.5, vel=0.5) 
             return 0
@@ -398,21 +398,21 @@ class UR3(UR):
         self.putsampledown()
 
     # @property
-    # def whereisFinger(self): 
+    # def whereisgripper(self): 
     #     return self._gripperpos 
-    # @whereisFinger.setter 
-    # def whereisFinger(self, pos): 
+    # @whereisgripper.setter 
+    # def whereisgripper(self, pos): 
     #     self._gripperpos = pos 
 
     def relocate_sample_to_sample2(self):
-        if not (self.whereisFinger() == 'samplestage'):
+        if not (self.whereisgripper() == 'samplestage'):
             self.transgrippertosamplestage()
         self.pickup()
         self.transport_from_sample_up_to_sample2_up()
         self.putsampledown()
 
     def relocate_sample2_to_sample(self):
-        if not (self.whereisFinger() == 'samplestage2'):
+        if not (self.whereisgripper() == 'samplestage2'):
             self.transgrippertosamplestage2()        
         self.pickup()
         self.transport_from_sample2_up_to_sample_up()
@@ -425,7 +425,7 @@ class UR3(UR):
         self.putsampledown()
         self.transport_from_samplestage_up_to_default()
         # wait at the middle position for data acquisition
-        self.sigFinger.emit("Frame %i is loaded. Waiting for data acquisition.."%self.currentFrame)
+        self.sigGripper.emit("Frame %i is loaded. Waiting for data acquisition.."%self.currentFrame)
 # #        self.movel(self.samup_p, acc=0.5, vel=0.5)
 #         self.movel(self.middl_p, acc=0.5, vel=0.5)
 #         self.movej(self.middl_q, acc=0.5, vel=0.5)
@@ -434,7 +434,7 @@ class UR3(UR):
         except:
             pass
         self.isSampleOnStage = True
-        #self.whereisFinger() = 'samplestage'
+        #self.whereisgripper() = 'samplestage'
         return 0
 
     def returnsample(self, z=0.15, in_offset = None):
@@ -444,15 +444,15 @@ class UR3(UR):
             pass
         self.release()
         self.transgrippertosamplestage()
-        # if self.whereisFinger() == 'middle':
+        # if self.whereisgripper() == 'middle':
         #     self.transport_from_default_to_samplestage_up()
-        # if self.whereisFinger() == 'magazine':
+        # if self.whereisgripper() == 'magazine':
         #     self.transport_from_magazine_up_to_samplestage_up()
-#        if not self.whereisFinger() in ('samplestage', 'middle'):
+#        if not self.whereisgripper() in ('samplestage', 'middle'):
 #            self.movej(self.middl_q, acc=0.5, vel=0.5)
 #            self.movel(self.middl_p, acc=1.4, vel=1.0)
         # pick up sample from the sample stage
-        self.sigFinger.emit("Returning the sample first..")
+        self.sigGripper.emit("Returning the sample first..")
 #        self.movels([self.samup_p, self.samdn_p], radius = 0.01, acc=0.5, vel=0.5)
 #        #self.movel(self.samdn_p, acc=0.5, vel=0.5)
 #        self.grab()
@@ -460,11 +460,11 @@ class UR3(UR):
         self.pickup()
 
         # transport to the magazine via the middle point
-        self.sigFinger.emit("Being transported..")
+        self.sigGripper.emit("Being transported..")
         self.transport_from_samplestage_up_to_magazine_up()
 
         val = self.putsampledown(z=0.150, offset=in_offset)
-        self.sigFinger.emit("Successfully returned..")
+        self.sigGripper.emit("Successfully returned..")
 
 
         self.isSampleOnStage = False
@@ -490,17 +490,17 @@ class UR3(UR):
 
     def mountFrameN(self, number):
         if self.isSampleOnStage is True:
-            #self.sigFinger.emit("Sample is being returned.")
+            #self.sigGripper.emit("Sample is being returned.")
             self.returnsample()
         if number > self.numFrame:
             print("%i is larger than total number of frames"%number)
             return -2
-        self.sigFinger.emit("Moving the gripper over to next frame.")
+        self.sigGripper.emit("Moving the gripper over to next frame.")
         self.moveMagazine2FrameN(number)
-        #self.sigFinger.emit("Frame %i is being picked up."%self.currentFrame)
+        #self.sigGripper.emit("Frame %i is being picked up."%self.currentFrame)
         rtn = self.getsample()
 #        if rtn == 0:
-#            self.sigFinger.emit("Frame %i is loaded successfully."%self.currentFrame)
+#            self.sigGripper.emit("Frame %i is loaded successfully."%self.currentFrame)
         return rtn
 
     def setCurrentasFirstFrame(self):
@@ -517,7 +517,7 @@ class UR3(UR):
         self.movegripperup_totransport()
         #self.transportgripper_to_magazine()
         self.transgrippertomagazine()
-        # if not self.whereisFinger() == 'magazine':
+        # if not self.whereisgripper() == 'magazine':
         #     # go to pick position
         #     self.movej(self.middl_q, acc=0.5, vel=1.0)
         #     #self.movels([self.middl_p, self.magup_p], acc=0.5, vel=0.5, radius=0.05)
@@ -526,22 +526,22 @@ class UR3(UR):
 
         # going down to pick up sample
         self.pickup()
-        # self.sigFinger.emit("Moving the gripper down to pick up.")
+        # self.sigGripper.emit("Moving the gripper down to pick up.")
         # self.movel(self.magdn_p, acc=1.4, vel=1.0)
-        # self.sigFinger.emit("Grabing.")
+        # self.sigGripper.emit("Grabing.")
         # self.grab()
-        # self.sigFinger.emit("Moving up to transport.")
+        # self.sigGripper.emit("Moving up to transport.")
         # self.movel(self.magup_p, acc=1.4, vel=1.0)
 
         time.sleep(5)
-        self.sigFinger.emit("Moving down to return..")
+        self.sigGripper.emit("Moving down to return..")
         self.putsampledown()
         # self.movel(self.magdn_p, acc=1.4, vel=1.0)
-        # self.sigFinger.emit("Release grippers.")
+        # self.sigGripper.emit("Release grippers.")
         # self.release()
 
         # # move up and stop.
-        # self.sigFinger.emit("Moving grippers up.")
+        # self.sigGripper.emit("Moving grippers up.")
         # self.movel(self.magup_p, acc=1.4, vel=1.0)
 
     def goto_default(self):
@@ -557,7 +557,7 @@ class UR3(UR):
             pos[2] = minzval
             self.movel(pos, acc=0.5, vel=0.5)
         self.movej(self.middl_q, acc=0.5, vel=0.75)
-#        self.whereisFinger()
+#        self.whereisgripper()
 
 #    def goto_magazine(self):
 #        pos = self.get_xyz().tolist()
@@ -569,15 +569,15 @@ class UR3(UR):
 
     def pickup(self):
         run = 0
-        if self.whereisFinger() == "nowhere":
+        if self.whereisgripper() == "nowhere":
             print("current figner position is at nowhere.")
-        if self.whereisFinger() == 'samplestage':
+        if self.whereisgripper() == 'samplestage':
             self.movel(self.samdn_p, acc=0.5, vel=0.5)
             run = 1
-        if self.whereisFinger() == 'samplestage2':
+        if self.whereisgripper() == 'samplestage2':
             self.movel(self.samdn2_p, acc=0.5, vel=0.5)
             run = 3
-        if self.whereisFinger() == 'magazine':
+        if self.whereisgripper() == 'magazine':
             self.movel(self.magdn_p, acc=0.5, vel=0.5)
             run = 2
         self.grab()
@@ -591,35 +591,35 @@ class UR3(UR):
         val = self.gripper.get_position()
         
         if val < 0.5:
-            self.sample_onFinger = False
-            self.sigObject_onFinger.emit(False)
+            self.sample_ongripper = False
+            self.sigObject_ongripper.emit(False)
         else:
-            self.sample_onFinger = True
-            self.sigObject_onFinger.emit(True)
-#        self.whereisFinger()
+            self.sample_ongripper = True
+            self.sigObject_ongripper.emit(True)
+#        self.whereisgripper()
 
     def dropofftest(self):
-        #print(self.whereisFinger(), "This is a gripper position")
-        #if not self.whereisFinger() == 'middle':
+        #print(self.whereisgripper(), "This is a gripper position")
+        #if not self.whereisgripper() == 'middle':
         #    self.movel(self.middl_p, acc=0.5, vel=0.5)
-        #print(self.whereisFinger(), "This is a gripper position")
-        if self.whereisFinger() == 'samplestage':
+        #print(self.whereisgripper(), "This is a gripper position")
+        if self.whereisgripper() == 'samplestage':
             self.movel(self.samup_p, acc=0.5, vel=0.5)
             self.movel(self.samdn_p, acc=0.5, vel=0.5)
             self.grab()
 
             # transport to the magazine via the middle point
-            self.sigFinger.emit("Being transported..")
+            self.sigGripper.emit("Being transported..")
             self.movel(self.samup_p, acc=0.5, vel=0.5)
             time.sleep(5)
             self.putsampledown()
-        elif self.whereisFinger() == 'samplestage2':
+        elif self.whereisgripper() == 'samplestage2':
             self.movel(self.samup2_p, acc=0.5, vel=0.5)
             self.movel(self.samdn2_p, acc=0.5, vel=0.5)
             self.grab()
 
             # transport to the magazine via the middle point
-            self.sigFinger.emit("Being transported..")
+            self.sigGripper.emit("Being transported..")
             self.movel(self.samup2_p, acc=0.5, vel=0.5)
             time.sleep(5)
             self.putsampledown()
@@ -632,13 +632,13 @@ class UR3(UR):
         self.pastcommand = 'movegripperup_totransport'
         self.sigRobotCommand.emit(self.pastcommand)
         self.sigRobotPosition.emit(self.pastpos)
-        if self.whereisFinger() == 'samplestage':
+        if self.whereisgripper() == 'samplestage':
             self.movel(self.samup_p, acc=0.5, vel=0.5)
-        if self.whereisFinger() == 'samplestage2':
+        if self.whereisgripper() == 'samplestage2':
             self.movel(self.samup2_p, acc=0.5, vel=0.5)
-        if self.whereisFinger() == 'magazine':
+        if self.whereisgripper() == 'magazine':
             self.movel(self.magup_p, acc=0.5, vel=0.5)
-#        self.whereisFinger()
+#        self.whereisgripper()
 
     def movegripperdown_tosamplestage(self):
         self.pastpos = self.get_xyz()
@@ -646,7 +646,7 @@ class UR3(UR):
         self.sigRobotCommand.emit(self.pastcommand)
         self.sigRobotPosition.emit(self.pastpos)
         self.movel(self.samdn_p, acc=0.5, vel=0.5)
-#        self.whereisFinger()
+#        self.whereisgripper()
 
     def movegripperdown_tomagazine(self):
         self.pastpos = self.get_xyz()
@@ -654,58 +654,58 @@ class UR3(UR):
         self.sigRobotCommand.emit(self.pastcommand)
         self.sigRobotPosition.emit(self.pastpos)
         self.movel(self.magdn_p, acc=0.5, vel=0.5)
-#        self.whereisFinger()
+#        self.whereisgripper()
     
     def transgrippertosamplestage(self):
         self.pastpos = self.get_xyz()
         self.pastcommand = 'transgrippertosamplestage'
         self.sigRobotCommand.emit(self.pastcommand)
         self.sigRobotPosition.emit(self.pastpos)
-        #        if self.whereisFinger() == 'samplestage':
+        #        if self.whereisgripper() == 'samplestage':
 #            self.transport_from_samplestage_up_to_samplestage_up()
-        if self.whereisFinger() == 'middle':
+        if self.whereisgripper() == 'middle':
             self.transport_from_default_to_samplestage_up()
-        if self.whereisFinger() == 'samplestage2':
+        if self.whereisgripper() == 'samplestage2':
             self.transport_from_sample2_up_to_sample_up()
-        if self.whereisFinger() == 'nowhere':
+        if self.whereisgripper() == 'nowhere':
             self.goto_default()
             self.transport_from_default_to_samplestage_up()
-        if self.whereisFinger() == 'magazine':
+        if self.whereisgripper() == 'magazine':
             self.transport_from_magazine_up_to_samplestage_up()
-#        self.whereisFinger()
+#        self.whereisgripper()
     def transgrippertosamplestage2(self):
         self.pastpos = self.get_xyz()
         self.pastcommand = 'transgrippertosamplestage'
         self.sigRobotCommand.emit(self.pastcommand)
         self.sigRobotPosition.emit(self.pastpos)
-        #        if self.whereisFinger() == 'samplestage':
+        #        if self.whereisgripper() == 'samplestage':
 #            self.transport_from_samplestage_up_to_samplestage_up()
-        if self.whereisFinger() == 'middle':
+        if self.whereisgripper() == 'middle':
             self.transport_from_default_to_samplestage_up()
-        if self.whereisFinger() == 'samplestage':
+        if self.whereisgripper() == 'samplestage':
             self.transport_from_sample_up_to_sample2_up()
-        if self.whereisFinger() == 'nowhere':
+        if self.whereisgripper() == 'nowhere':
             self.goto_default()
             self.transport_from_default_to_samplestage_up()
-        if self.whereisFinger() == 'magazine':
+        if self.whereisgripper() == 'magazine':
             self.transport_from_magazine_up_to_samplestage_up()
-#        self.whereisFinger()
+#        self.whereisgripper()
 
     def transgrippertomagazine(self):
         self.pastpos = self.get_xyz()
         self.pastcommand = 'transgrippertomagazine'
         self.sigRobotCommand.emit(self.pastcommand)
         self.sigRobotPosition.emit(self.pastpos)
-        if self.whereisFinger() == 'samplestage':
+        if self.whereisgripper() == 'samplestage':
             self.transport_from_samplestage_up_to_magazine_up()
-        if self.whereisFinger() == 'middle':
+        if self.whereisgripper() == 'middle':
             self.transport_from_default_to_magazine_up()
-        if self.whereisFinger() == 'nowhere':
+        if self.whereisgripper() == 'nowhere':
             self.goto_default()
             self.transport_from_default_to_magazine_up()
-        if self.whereisFinger() == 'magazine':
+        if self.whereisgripper() == 'magazine':
             self.set_pose(self.magup_p, acc=0.5, vel=1, command='movej')
-        #print(self.whereisFinger(), "This is in transgrippertomagazine")
+        #print(self.whereisgripper(), "This is in transgrippertomagazine")
 
     def transport_from_default_to_magazine_up(self):
         self.pastpos = self.get_xyz()
@@ -720,21 +720,21 @@ class UR3(UR):
                 offset = self.vert_offset*0.001
             else:
                 offset = 0.001
-        #print(self.whereisFinger())
+        #print(self.whereisgripper())
         #print(self.samdn2_p.get_pose_vector().tolist(), "sampdn2")
         #print(self.samdn_p.get_pose_vector().tolist(), "sampdn")
-        if self.whereisFinger() == "nowhere":
+        if self.whereisgripper() == "nowhere":
             print("current figner position is at nowhere.")
-        if self.whereisFinger() == 'samplestage':
+        if self.whereisgripper() == 'samplestage':
             run = 1
             cposz = self.get_pos()
             z = abs(cposz[2] - self.samdn_p.pos[2])-offset
-        if self.whereisFinger() == 'samplestage2':
+        if self.whereisgripper() == 'samplestage2':
             run = 3
             cposz = self.get_pos()
             z = abs(cposz[2] - self.samdn2_p.pos[2])-offset
             print(f"z to go is {z}")
-        if self.whereisFinger() == 'magazine':
+        if self.whereisgripper() == 'magazine':
             run = 2
             cposz = self.get_pos()
             z = abs(cposz[2] - self.magdn_p.pos[2])-offset
@@ -754,7 +754,7 @@ class UR3(UR):
             self.movel(self.magup_p, acc=0.5, vel=1)
         if run == 3:
             self.movel(self.samup2_p, acc=0.5, vel=1)
-#        self.whereisFinger()
+#        self.whereisgripper()
         return 0
 #        self.movel(pos_org, acc=0.4, vel=0.2, wait=True)
 
@@ -763,26 +763,26 @@ class UR3(UR):
 
         self.release()
 
-    def whereisFinger(self):
+    def whereisgripper(self):
         pos = self.get_pose()
 
         t = pos.pos - self.magup_p.pos
         t[2] = 0 # make Z 0. only compare (x, y)
         if (pos.pos[0] > 0) and (pos.pos[1]>-0.2): #somewhere sample area
-            self.sigFingerPosition.emit('magazine')
+            self.sigGripperPosition.emit('magazine')
             return 'magazine'
 
         t = pos.pos - self.samup_p.pos
         t[2] = 0 # make Z 0. only compare (x, y)
         if t.length < 0.06:
-            self.sigFingerPosition.emit('samplestage')
+            self.sigGripperPosition.emit('samplestage')
             return 'samplestage'
         
         if hasattr(self, 'samdn2_p'):
             t = pos.pos - self.samdn2_p.pos
             t[2] = 0 # make Z 0. only compare (x, y)
             if t.length < 0.06:
-                self.sigFingerPosition.emit('samplestage2')
+                self.sigGripperPosition.emit('samplestage2')
                 return 'samplestage2'
 
         ang = self.getj()
@@ -793,10 +793,10 @@ class UR3(UR):
         t = pos.pos - self.middl_p.pos
         t[2] = 0 # make Z 0. only compare (x, y)
         if t.length < 0.06:
-            self.sigFingerPosition.emit('middle')
+            self.sigGripperPosition.emit('middle')
             return 'middle'
         else:
-            self.sigFingerPosition.emit('nowhere')
+            self.sigGripperPosition.emit('nowhere')
             return "nowhere"
 
 
@@ -1177,10 +1177,10 @@ def auto_align_12idb_standard_holder2(rob):
 
 class UR5(UR):
     # unit of position vector : meter.
-    sigFinger = pyqtSignal(str)
+    sigGripper = pyqtSignal(str)
     sigMoving = pyqtSignal(bool)
-    sigFingerPosition = pyqtSignal(str)
-    sigObject_onFinger = pyqtSignal(bool)
+    sigGripperPosition = pyqtSignal(str)
+    sigObject_ongripper = pyqtSignal(bool)
     sigRobotCommand = pyqtSignal(str)
     sigRobotPosition = pyqtSignal(numpy.ndarray)
 
