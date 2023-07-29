@@ -25,6 +25,14 @@ import numpy as np
 import math
 import json
 
+try:
+    sys.path.append('..\python-urx')
+except:
+    pass
+try:
+    sys.path.append('python-urx')
+except:
+    pass
 # UR3
 # when you change the python package, change this line to choose a right class.
 #from urxe.robUR import UR_cam_grip
