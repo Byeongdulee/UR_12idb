@@ -52,7 +52,7 @@ class roboUR3(QObject):
 # Y : positive - Along X-ray
 # Y : negative - Again X-ray
 #        self.robot = robot
-        #self.finger.gripper_activate()
+        #self.gripper.gripper_activate()
         self.name = "roboUR3"
     
     def set_tcp(self, tcp):
@@ -305,10 +305,10 @@ class roboUR3(QObject):
         return vect
     # @property
     # def whereisFinger(self): 
-    #     return self._fingerpos 
+    #     return self._gripperpos 
     # @whereisFinger.setter 
     # def whereisFinger(self, pos): 
-    #     self._fingerpos = pos 
+    #     self._gripperpos = pos 
     
     def m3d_2_pose(self, path):
         p = path.get_pose_vector()

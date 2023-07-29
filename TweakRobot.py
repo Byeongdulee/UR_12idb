@@ -131,8 +131,8 @@ class tweakRobot(QMainWindow):
         self.ui.actionCamera_Face_Down.triggered.connect(self.camera_downface)
         self.ui.actionClear_Feed.triggered.connect(self.clearImage)
         self.ui.actionCamera_to_face_at_AprilTag.triggered.connect(self.faceAtag)
-        self.ui.actionMove_the_finger_tip_to_the_camera_center.triggered.connect(self.putTCP2CM)
-        self.ui.actionMove_the_camera_center_to_the_finger_tip.triggered.connect(self.putCM2TCP)
+        self.ui.actionMove_the_gripper_tip_to_the_camera_center.triggered.connect(self.putTCP2CM)
+        self.ui.actionMove_the_camera_center_to_the_gripper_tip.triggered.connect(self.putCM2TCP)
         self.ui.actionMeasure_height.triggered.connect(self.measureheight)
         self.ui.actionPrint_Cartesian_Coordinates.triggered.connect(self.printXYZ)
         self.ui.actionPrint_Joints_Coordinates.triggered.connect(self.printJoints)
@@ -155,10 +155,10 @@ class tweakRobot(QMainWindow):
             print("There was no prev_pose, yet. This only works with AprilTag.")
     
     def putCM2TCP(self):
-        self.threadrun(self.rob.camera2fingertip)
+        self.threadrun(self.rob.camera2grippertip)
     
     def putTCP2CM(self):
-        self.threadrun(self.rob.fingertip2camera)
+        self.threadrun(self.rob.grippertip2camera)
     
     def measureheight(self):
         # Pass the function to execute

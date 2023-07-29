@@ -21,7 +21,7 @@ def test(rob):
     rob.moveto(pos_sam)
     rob.mvr2z(-0.1)
     rob.grab()
-    fp = rob.finger.get_position()
+    fp = rob.gripper.get_position()
     rob.mvr2z(0.1)
     rob.moveto(pos_mag, vel=0.1)
     if fp>1: # there is a sample 

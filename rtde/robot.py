@@ -56,9 +56,9 @@ class Robot():
 
     def __init__(self, name = 'UR3'):
         super().__init__()
-        # fingertype:
-        #   0: No finger
-        #   1: Robotiq finger
+        # grippertype:
+        #   0: No gripper
+        #   1: Robotiq gripper
         # cameratype :
         #   0: No camera
         #   1: IP camera

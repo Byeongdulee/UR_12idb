@@ -826,8 +826,8 @@
     <addaction name="actionZ_align"/>
     <addaction name="actionReturn_back_to_previous_pose"/>
     <addaction name="separator"/>
-    <addaction name="actionMove_the_finger_tip_to_the_camera_center"/>
-    <addaction name="actionMove_the_camera_center_to_the_finger_tip"/>
+    <addaction name="actionMove_the_gripper_tip_to_the_camera_center"/>
+    <addaction name="actionMove_the_camera_center_to_the_gripper_tip"/>
     <addaction name="actionMeasure_height"/>
    </widget>
    <addaction name="menuCamera"/>
@@ -874,9 +874,9 @@
     <string>Camera to face at AprilTag</string>
    </property>
   </action>
-  <action name="actionMove_the_finger_tip_to_the_camera_center">
+  <action name="actionMove_the_gripper_tip_to_the_camera_center">
    <property name="text">
-    <string>Move the finger tip to the camera center</string>
+    <string>Move the gripper tip to the camera center</string>
    </property>
   </action>
   <action name="actionMeasure_height">
@@ -884,9 +884,9 @@
     <string>Measure height by touching</string>
    </property>
   </action>
-  <action name="actionMove_the_camera_center_to_the_finger_tip">
+  <action name="actionMove_the_camera_center_to_the_gripper_tip">
    <property name="text">
-    <string>Move the camera center to the finger tip</string>
+    <string>Move the camera center to the gripper tip</string>
    </property>
   </action>
   <action name="actionPrint_Cartesian_Coordinates">

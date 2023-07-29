@@ -100,11 +100,11 @@ class UR_cam_grip(QObject):
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
     camtcp = [0, 0.0433, 0.015, -math.pi/180*30, 0, 0]
 
-    def __init__(self, name = 'UR3', package='urxe', fingertype=1, cameratype=1):
+    def __init__(self, name = 'UR3', package='urxe', grippertype=1, cameratype=1):
         super().__init__()
-        # fingertype:
-        #   0: No finger
-        #   1: Robotiq finger
+        # grippertype:
+        #   0: No gripper
+        #   1: Robotiq gripper
         # cameratype :
         #   0: No camera
         #   1: IP camera
@@ -142,8 +142,8 @@ class UR_cam_grip(QObject):
         else:
             pass
 
-        if fingertype==1:
-            self.finger = RobotiqGripper(self.robot)
+        if grippertype==1:
+            self.gripper = RobotiqGripper(self.robot)
         else:
             pass
 
@@ -257,7 +257,7 @@ class UR_cam_grip(QObject):
         self.robot.bump(*args, **kwargs)
     
     def set_tool_communication(self, obj): #tool_setting is a dict
-        # rob.set_tool_communication(rob.finger)
+        # rob.set_tool_communication(rob.gripper)
         tool_setting = obj._comm_setting
         self.robot.set_tool_communication(enabled=True,baud_rate=tool_setting["baud_rate"],
                                           parity=tool_setting["parity"],
@@ -618,26 +618,26 @@ class UR(UR_cam_grip):
 
 # Gripper functions
     def activate_gripper(self):
-        if not hasattr(self, 'finger'):
+        if not hasattr(self, 'gripper'):
             raise NoFingerException('No gripper defined.')
         
-        self.finger.gripper_activate()
+        self.gripper.gripper_activate()
 
     def grab(self):
-        if not hasattr(self, 'finger'):
+        if not hasattr(self, 'gripper'):
             raise NoFingerException('No gripper defined.')
-        self.finger.close_gripper()
-        #self.finger.gripper_action(255)
+        self.gripper.close_gripper()
+        #self.gripper.gripper_action(255)
 
     def release(self):
-        if not hasattr(self, 'finger'):
+        if not hasattr(self, 'gripper'):
             raise NoFingerException('No gripper defined.')
-        self.finger.gripper_action(120)
+        self.gripper.gripper_action(120)
 
     def loosen(self):
-        if not hasattr(self, 'finger'):
+        if not hasattr(self, 'gripper'):
             raise NoFingerException('No gripper defined.')
-        self.finger.gripper_action(190)
+        self.gripper.gripper_action(190)
 
 # Camera functions.
     def tweak_around_camera_axis(self, ang, acc=0.5, vel=0.5):
@@ -897,7 +897,7 @@ class UR(UR_cam_grip):
         return ang
 
     # putting the tooltip to the current camera position
-    def fingertip2camera(self):
+    def grippertip2camera(self):
         if not hasattr(self, 'camera'):
             raise NoCameraException('No camera defined.')
         self.prev_tcp = self.get_tcp()
@@ -908,7 +908,7 @@ class UR(UR_cam_grip):
         self.set_tcp(self.prev_tcp)
 
     # putting the camera to the current tooltip position
-    def camera2fingertip(self):
+    def camera2grippertip(self):
         if not hasattr(self, 'camera'):
             raise NoCameraException('No camera defined.')
         self.prev_tcp = self.get_tcp()
@@ -918,7 +918,7 @@ class UR(UR_cam_grip):
         self.set_pose(pose, vel=0.2, acc=0.1)
         self.set_tcp(self.prev_tcp)
     
-    # special case of fingertip2camera. This is to make the finger tip face down.
+    # special case of grippertip2camera. This is to make the gripper tip face down.
     def put_tcp2camera(self):
         if not hasattr(self, 'camera'):
             raise NoCameraException('No camera defined.')
@@ -928,7 +928,7 @@ class UR(UR_cam_grip):
         self.tilt_back()
         self.set_pos(pos, acc=0.1, vel=0.1)
 
-    # special case of camera2fingertip. This is to make the camera face down.
+    # special case of camera2grippertip. This is to make the camera face down.
     def put_camera2tcp(self):
         if not hasattr(self, 'camera'):
             raise NoCameraException('No camera defined.')
