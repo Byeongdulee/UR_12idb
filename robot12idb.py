@@ -1174,7 +1174,7 @@ def auto_align_12idb_standard_holder2(rob):
     h = rob.measureheight()
     print(f"The TCP is from {h}m above a surface.")
     
-
+# This is for UR5 robot at 12-ID-C.
 class UR5(UR):
     # unit of position vector : meter.
     sigGripper = pyqtSignal(str)

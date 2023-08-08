@@ -254,10 +254,7 @@ class pipet():
         return self._set_var('A', newpos)
 
     def connect(self, hostname: str=HOST, port: int = 54321, socket_timeout: float = 2.0) -> None:
-        """Connects to a gripper at the given address.
-        :param hostname: Hostname or ip.
-        :param port: Port.
-        :param socket_timeout: Timeout for blocking socket operations.
+        """Connects to a pipet at the given address.
         """
         if hasattr(self, hostname):
             con = (self.hostname, self.port)
@@ -280,7 +277,7 @@ class pipet():
             print(f"{variable}{str(value)}.")
 
     def _set_vars(self, var_dict: OrderedDict[str, Union[str, int, float]], timeout = 10, wait=True):
-        """Sends the appropriate command via socket to set the value of n variables, and waits for its 'ack' response.
+        """set variables or parameters.
         :param var_dict: Dictionary of variables to set (variable_name, value).
         :return: True on successful reception of ack, false if no ack was received, indicating the set may not
         have been effective.
@@ -354,7 +351,7 @@ class pipet():
         return self._set_var(command, value=value, timeout=timeout, wait=wait)
     
     def _set_var(self, variable: str, value: Union[str, int, float], timeout = 10, wait=True):
-        """Sends the appropriate command via socket to set the value of a variable, and waits for its 'ack' response.
+        """set a single variable.
         :param variable: Variable to set.
         :param value: Value to set for the variable.
         :return: True on successful reception of ack, false if no ack was received, indicating the set may not
@@ -363,7 +360,7 @@ class pipet():
         return self._set_vars(OrderedDict([(variable, value)]), timeout = timeout, wait=wait)
 
     def _get_var(self, variable: str):
-        """Sends the appropriate command to retrieve the value of a variable from the gripper, blocking until the
+        """Retrieve the value of a variable from the pipet, blocking until the
         response is received or the socket times out.
         :param variable: Name of the variable to retrieve.
         :return: Value of the variable as integer.

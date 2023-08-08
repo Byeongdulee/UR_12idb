@@ -4,11 +4,13 @@ This package contains general python codes for UR robots (urxe) and some specifi
 # Brief history
 This repository contains a python package for controlling UR robots at synchrotron beamlines. Initially, the APS 12ID-B beamline, which this code was dveloped for, intended to use a set of common commands for a number of different robots for the beamline operation. Later, some robots are retired, leaving only UR robot and a virtual simulator, roboDK in this package.
 
+In 2023, a new end-effector, a tri-continent pipet, is added.
+
 # Credits
-This python package urxe is based on urx, https://github.com/Byeongdulee/python-urx or its original, https://github.com/SintefManufacturing/python-urx.
+This python package urxe is based on urx, https://github.com/Byeongdulee/python-urx, or its original, https://github.com/SintefManufacturing/python-urx. A set of child classes,
 urxe is an extension of urx for Robotiq wrist camera and gripper and rtmon for a newer OS (5.8 and higher).
 
-The secondary monitor of python-urx was rewritten for better use at the APS. The thread is changed to be daemonic, which I do not know a right thing to do...
+The secondary monitor of python-urx was rewritten for better use at the APS. The thread is changed to be daemonic.
 Since the rtde code of python-urx does not support many features required for 12ID operation, it is replaced with ur-rtde distributed by Universal Robot.
 
 Some codes for the robotiq gripper are downloaded without modification (see the head lines for the source).
@@ -159,3 +161,15 @@ Once the heater is configured, test whether robot can insert a sample without an
 ```python
 > rob.dropofftest() 
 ```
+
+# At the beamline 12IDC
+## Tool changer
+On the 12-ID-C UR5, a tool changer is implemented. Available tools include a Tri-continent Z-pipet and Robotiq gripper. See the UR5 class in robot12idb.py. Our tool changer requires a digital out for the compressed air valve (normally closed).
+
+## Tricontinent pipet
+A python code to control the Z-series pump of Tricontinent is added. You will need to purchase a control board and pumps. A wiring diagram of the board is found in the vendor's manual. The RS485 interface of the board can be connected to a PC or the tool I/O of the UR robot. The design of the mounting braket of the pipet to the tool flange could be available upon request.
+
+
+The tc_pipet.py assumes the two below:
+1. The pump is connected to the Tool I/O of a UR robot, which requires wiring of 4 pins of the Z-pump control board. Example, when a Lumberg RKMV 8-354 is used, its gray, red, brown, and white cables should go to the 24V, GND, RS485B, and RS485A pins. According to the UR3 manual, gray for Power, red for GND, brown for Analog input 3, and white for Analog input 2.
+2. A URcap for RS485 daemon is required. Download and install from https://forum.universal-robots.com/t/establish-rs485-connection-with-tool/14821/5.
