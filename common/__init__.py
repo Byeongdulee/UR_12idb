@@ -10,5 +10,6 @@ try:
     from . import utils
     from . import robUR
     from . import tc_pipet
+    from . import ursocket
 except:
     raise ModuleNotFoundError
