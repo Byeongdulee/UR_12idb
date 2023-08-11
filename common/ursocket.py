@@ -4,9 +4,16 @@ import socketserver
 import time
 
 from urx.urscript import URScript
-SOCKET_HOST = socket.getfqdn()
+
+def get_ip_address():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    return s.getsockname()[0]
+
+SOCKET_HOST = get_ip_address()
 SOCKET_PORT = 50001
 SOCKET_NAME = 'ursocket0'
+
 
 class URsocket(URScript):
     def __init__(self, socket_host=SOCKET_HOST,
