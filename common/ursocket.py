@@ -69,7 +69,7 @@ class urclient(object):
         time.sleep(0.1)        
 
 def get_val(rob):
-    HOST, PORT = "localhost", 10011
+    HOST, PORT = SOCKET_HOST, SOCKET_PORT
     server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
     with server:
         ip, port = server.server_address
