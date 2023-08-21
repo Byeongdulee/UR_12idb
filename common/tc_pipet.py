@@ -148,6 +148,13 @@ class pipet():
 
     def get_step(self):
         pos = self._get_var('?0')
+        timeout = 10
+        cnt = 1
+        while (pos<0) and (cnt<timeout):
+            pos = self._get_var('?0')
+            cnt = cnt+1
+        if cnt==timeout:
+            raise CommunicationException
         return pos
     
     def get_step_percent(self):
@@ -213,6 +220,9 @@ class pipet():
         if stop !=0:
             par.update({"c":stop})
         self._set_vars(par)
+        vol = self.get_volume()
+        print(f"Pipet is at {vol} uL position.")
+
     
     def aspirate(self, vol=0, percent=0, start=0, speed=0, stop=0):
         if vol !=0:
@@ -227,6 +237,8 @@ class pipet():
         if stop !=0:
             par.update({"c":stop})
         self._set_vars(par)
+        vol = self.get_volume()
+        print(f"Pipet is at {vol} uL position.")
 
     def _convert_vol_to_step(self, vol): #mL
         percent = vol/self.volume*100
@@ -292,35 +304,72 @@ class pipet():
             cmd += f"{variable}{val}"
         cmd += 'R\r'  # R for execution and new line is required for the command to finish
         # atomic commands send/rcv
-        #timeout = 10
-        readdone = False
-        cnt = 1
-        timeout = 10
         with self.command_lock:
-            while ((not readdone) and (cnt < timeout)):
+            try:
                 self.socket.sendall(cmd.encode(self.ENCODING))
-                time.sleep(0.05)
-                try:
-                    data = self.socket.recv(1024)
-                    readdone = True
-                except:
-                    self.connect()
-                    cnt = cnt + 1
-                    # self.socket.sendall(cmd.encode(self.ENCODING))
-                    # time.sleep(0.1)
-                    # data = self.socket.recv(1024)
-                    print(f"Pipet status checking has been iterated {cnt} times without success.")
+            except:
+                self.connect()
+                self.socket.sendall(cmd.encode(self.ENCODING))
+            time.sleep(0.2)
+            ans = ""
+            try:
+                data = self.socket.recv(1024)
+            except ConnectionAbortedError:
+                self.connect()
+                data = ""
+            except socket.timeout:
+                self.connect()
+                data = ""
+#                data = self.socket.recv(1024)
+#            print(data, " In _set_vars.")
+            try:
                 ans = self._decode_answer(data)
-                if len(ans) == 0:
-                    readdone = False
-            t = time.time()
-            errcheck, notbusy = self._status_check(ans)
+            except:
+                self.connect()
+            if len(ans)>0:
+                errcheck, notbusy = self._status_check(ans)
+            else:
+                wait = False
+                errcheck = False
+
+#             while ((not readdone) and (cnt < timeout)):
+#                 time.sleep(0.1)
+#                 ans = ""
+#                 try:
+#                     data = self.socket.recv(1024)
+#                     #print(data, "set_vars")
+#                     ans = self._decode_answer(data)
+#                     readdone = True
+#                 except:
+#                     self.disconnect()
+#                     time.sleep(0.1)
+#                     self.connect()
+#                     cnt = cnt + 1
+#                     # self.socket.sendall(cmd.encode(self.ENCODING))
+#                     # time.sleep(0.1)
+#                     # data = self.socket.recv(1024)
+# #                    print(f"Pipet status checking has been iterated {cnt} times without success.")
+# #                print(ans, "_set_vars")
+#                 if len(ans) == 0:
+#                     readdone = False
+#                     return False
+#             t = time.time()
+#             if len(ans)>0:
+#                 errcheck, notbusy = self._status_check(ans)
+#             else:
+#                 wait = False
+#                 errcheck = False
+
+
+
+        t = time.time()
+        timeout = 5
         if wait:
             while not notbusy:
                 time.sleep(0.1)
                 errcheck, notbusy = self.get_status()
                 if time.time()-t > timeout:
-                    print("Timeout")
+#                    print("get_status timeout in set_vars.")
                     break
         return errcheck
             # if noerror:
@@ -337,6 +386,7 @@ class pipet():
                 time.sleep(0.05)
                 try:
                     data = self.socket.recv(1024)
+#                    print(data, "get_status")
                     ans = self._decode_answer(data)
                     errcheck, busycheck = self._status_check(ans)
                     readdone = True
@@ -367,26 +417,33 @@ class pipet():
         """
         # atomic commands send/rcv
         cmd = "/1"
+        cmd += f"{variable}"
+        cmd += '\r'
         readdone = False
-        timeout = 5
+        timeout = 3
         cnt = 1
         with self.command_lock:
-            cmd += f"{variable}"
-            cmd += '\r'
+            data = ""
             while ((not readdone) and (cnt<timeout)):
                 self.socket.sendall(cmd.encode(self.ENCODING))
-                time.sleep(0.05)
+                time.sleep(0.1*cnt)
                 try:
                     data = self.socket.recv(1024)
                     readdone = True
-                except:
+                except ConnectionAbortedError:
                     self.connect()
                     cnt = cnt + 1
+                    time.sleep(0.1*cnt)
+                except socket.timeout:
+                    self.connect()
+                    cnt = cnt + 1
+                    time.sleep(0.1*cnt)
         if len(data)>0:
+            #print(data, "get_var")
             ans = self._decode_answer(data[1:])
             return float(ans)
         else:
-            raise CommunicationException
+            return -1
 
     def _decode_answer(self, data):
         if len(data)==0:
