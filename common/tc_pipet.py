@@ -97,6 +97,8 @@ F Reports command buffer status. If the buffer is empty, the pump returns status
 class CommunicationException(Exception):
     pass
 
+class PipetError(Exception):
+    pass
 
 class pipet():
     # host = 'robot_ip'
@@ -151,10 +153,15 @@ class pipet():
         timeout = 10
         cnt = 1
         while (pos<0) and (cnt<timeout):
-            pos = self._get_var('?0')
+            pos = self._get_var('?0', trial=cnt)
+            time.sleep(0.1*cnt)
+            if cnt>1:
+                self.disconnect()
+#                print(f"Pipet: get_step tried {cnt} times.")
             cnt = cnt+1
+            self.connect()
         if cnt==timeout:
-            raise CommunicationException
+            raise CommunicationException("Pipet Communication Timeout.")
         return pos
     
     def get_step_percent(self):
@@ -208,11 +215,16 @@ class pipet():
         self._set_var("m", value)
     
     def dispense(self, vol=0, percent=0, start=0, speed=0, stop=0):
+        cvol = self.get_volume()
+        cpos = self._convert_vol_to_step(cvol)
+#        print("got the volume.")
         if vol !=0:
             pos = self._convert_vol_to_step(vol)
         else:
             pos = self._convert_percent_to_step(percent)
         par = {"D": pos}
+        if cpos-pos<0:
+            raise PipetError("Cannot dispense to negative volume.")
         if start !=0:
             par.update({"v":start})
         if speed !=0:
@@ -220,15 +232,28 @@ class pipet():
         if stop !=0:
             par.update({"c":stop})
         self._set_vars(par)
+
+        newpos = self.get_step()
+        while (newpos > cpos-pos):
+            time.sleep(0.1)
+            _pos = self.get_step()
+            if newpos == _pos:
+                break
+            else:
+                newpos = _pos
         vol = self.get_volume()
         print(f"Pipet is at {vol} uL position.")
 
     
     def aspirate(self, vol=0, percent=0, start=0, speed=0, stop=0):
+        cvol = self.get_volume()
+        cpos = self._convert_vol_to_step(cvol)
         if vol !=0:
             pos = self._convert_vol_to_step(vol)
         else:
             pos = self._convert_percent_to_step(percent)
+        if cpos+pos > self._max_position:
+            raise PipetError("Cannot aspirate more than the max.")
         par = {"P": pos}
         if start !=0:
             par.update({"v":start})
@@ -237,6 +262,19 @@ class pipet():
         if stop !=0:
             par.update({"c":stop})
         self._set_vars(par)
+
+        newpos = self.get_step()
+        while (newpos < cpos+pos):
+            time.sleep(0.1)
+            _pos = self.get_step()
+            if newpos == _pos:
+                break
+            else:
+                newpos = _pos
+
+        # while (self.get_step() < cpos+pos):
+        #     time.sleep(0.1)
+
         vol = self.get_volume()
         print(f"Pipet is at {vol} uL position.")
 
@@ -310,57 +348,34 @@ class pipet():
             except:
                 self.connect()
                 self.socket.sendall(cmd.encode(self.ENCODING))
-            time.sleep(0.2)
+            time.sleep(0.01)
             ans = ""
+            data = ""
             try:
                 data = self.socket.recv(1024)
+#                print(data, "Normal")
+                # while data[-1] != 10:
+                #     print(data[-1], "AAAAAA")
+                #     data += self.socket.recv(1024)
+                # print(data, "Normal")
             except ConnectionAbortedError:
+#                print("AbortError")
                 self.connect()
                 data = ""
             except socket.timeout:
+ #               print("TimeoutError")
                 self.connect()
                 data = ""
-#                data = self.socket.recv(1024)
-#            print(data, " In _set_vars.")
             try:
                 ans = self._decode_answer(data)
             except:
-                self.connect()
+#                print(data, "Decode error on line 347")
+                pass
             if len(ans)>0:
                 errcheck, notbusy = self._status_check(ans)
             else:
                 wait = False
                 errcheck = False
-
-#             while ((not readdone) and (cnt < timeout)):
-#                 time.sleep(0.1)
-#                 ans = ""
-#                 try:
-#                     data = self.socket.recv(1024)
-#                     #print(data, "set_vars")
-#                     ans = self._decode_answer(data)
-#                     readdone = True
-#                 except:
-#                     self.disconnect()
-#                     time.sleep(0.1)
-#                     self.connect()
-#                     cnt = cnt + 1
-#                     # self.socket.sendall(cmd.encode(self.ENCODING))
-#                     # time.sleep(0.1)
-#                     # data = self.socket.recv(1024)
-# #                    print(f"Pipet status checking has been iterated {cnt} times without success.")
-# #                print(ans, "_set_vars")
-#                 if len(ans) == 0:
-#                     readdone = False
-#                     return False
-#             t = time.time()
-#             if len(ans)>0:
-#                 errcheck, notbusy = self._status_check(ans)
-#             else:
-#                 wait = False
-#                 errcheck = False
-
-
 
         t = time.time()
         timeout = 5
@@ -409,7 +424,7 @@ class pipet():
         """
         return self._set_vars(OrderedDict([(variable, value)]), timeout = timeout, wait=wait)
 
-    def _get_var(self, variable: str):
+    def _get_var(self, variable: str, trial=1):
         """Retrieve the value of a variable from the pipet, blocking until the
         response is received or the socket times out.
         :param variable: Name of the variable to retrieve.
@@ -426,7 +441,7 @@ class pipet():
             data = ""
             while ((not readdone) and (cnt<timeout)):
                 self.socket.sendall(cmd.encode(self.ENCODING))
-                time.sleep(0.1*cnt)
+                time.sleep(0.1*trial)
                 try:
                     data = self.socket.recv(1024)
                     readdone = True
@@ -439,15 +454,27 @@ class pipet():
                     cnt = cnt + 1
                     time.sleep(0.1*cnt)
         if len(data)>0:
-            #print(data, "get_var")
-            ans = self._decode_answer(data[1:])
-            return float(ans)
+            try:
+                ans = self._decode_answer(data)
+            except:
+                print(data, "Pipet: Return decode error. Reading again.")
+                ans = "-1"
+            try:
+                return float(ans)
+            except ValueError:
+                print(ans, "Pipet: Return decode error. ans should be a number string.")
+                return -1
         else:
             return -1
 
     def _decode_answer(self, data):
         if len(data)==0:
             raise CommunicationException
+        dt = data.split(b'\n')
+        if len(dt)==1:
+            raise CommunicationException
+        # return should start from /x (id of the controller) and ends with \n
+        data = dt[len(dt)-2][1:]
         data, _ = data.split(b'\x03')
         data = data.decode(self.ENCODING)
         ans = data[2:]
@@ -483,7 +510,10 @@ class pipet():
             resp = "Plunger Overload"
         if data == 'h':
             resp = "CAN Bus failure"
-        print(resp, notbusy)
+        try:
+            print(resp, notbusy)
+        except:
+            print(data, "status_check")
         return (False, notbusy)
         # NoError_NotBusy = "`"
         # NoError_Busy = "@"
