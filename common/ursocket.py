@@ -29,8 +29,11 @@ class URsocket(URScript):
         self._socket_open(self.socket_host,
                           self.socket_port,
                           self.socket_name)
-    def _send_var(self, var_name, value):
-        self._socket_send_string("{}: {}".format(var_name, value), SOCKET_NAME)
+        
+    def _send_var(self, var_name):
+        msg = f"global {var_name}=0.0"
+        self.add_line_to_program(msg) 
+        self._socket_send_string("variables : to_str(\"{}\")".format(var_name), SOCKET_NAME)
 
 # threaded server runs on a pc
 class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
@@ -64,16 +67,17 @@ class urclient(object):
                                  socket_name=self.socket_name)
         return urscript
     
-    def get_var(self, var_name='rq_pos', var_value=50):
+    def get_var(self, var_name='rq_pos'):
         urscript = self._get_new_script()
-        urscript._send_var(var_name, var_value)
-    
+        urscript._send_var(var_name)
+        print(urscript())
         # Send the script
         self.robot.send_program(urscript())
 
         # sleep the code the same amount as the urscript to ensure that
         # the action completes
         time.sleep(0.1)        
+
 
 def get_val(rob):
     HOST, PORT = SOCKET_HOST, SOCKET_PORT
@@ -91,7 +95,7 @@ def get_val(rob):
         #print("Server loop running in thread:", server_thread.name)
         time.sleep(1)
         urc = urclient(robot=rob.robot)
-        urc.get_var()
+        urc.get_var('BLEE_var1')
         time.sleep(1)
         server.shutdown()
 

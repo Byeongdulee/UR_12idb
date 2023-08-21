@@ -54,7 +54,7 @@ class Robot():
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
     camtcp = [0, 0.04, 0.015, -math.pi/180*30, 0, 0]
 
-    def __init__(self, name = 'UR3'):
+    def __init__(self, name = 'UR3', use_rtde=True):
         super().__init__()
         # grippertype:
         #   0: No gripper
@@ -74,7 +74,8 @@ class Robot():
         self.logger = logging.getLogger(IP)
         
         self.orientation = m3d_Zdown_cameraY
-        self.rr = rr.RTDEReceiveInterface(IP)
+        if use_rtde:
+            self.rr = rr.RTDEReceiveInterface(IP)
         if SafetyMode(self.get_safety_mode()) is not SafetyMode.IS_NORMAL_MODE:
             print("Robot is not at NORMAL_MODE.")
         else:
@@ -124,6 +125,25 @@ class Robot():
         if not hasattr(self, 'rc'):
             raise RobotException("Robot is not at NORMAL_MODE.")
         self.rc.sendCustomScript(data)
+        while not self.rr.is_program_running():
+            time.sleep(0.01)
+        if wait:
+            while self.rr.is_program_running():
+                time.sleep(0.01)
+        self.rc.stopScript()
+
+    def write_output(self, address=0, val=0, wait=False):
+        """
+        write digital value
+        """
+        address = str(address)
+#        val = str(val)
+        if isinstance(val, float):
+            myprogram = "write_output_float_register(%s, %s)\n"%(address, str(val))
+            #myprogram = "def script_test():\n\twrite_output_float_register(%s, %s)\nend\nrun program\n"%(address, str(val))
+        if isinstance(val, int):
+            myprogram = "def script_test():\n\twrite_output_integer_register(%s, %s)\nend\nrun program\n"%(address, str(val))
+        self.rc.sendCustomScript(myprogram)
         while not self.rr.is_program_running():
             time.sleep(0.01)
         if wait:

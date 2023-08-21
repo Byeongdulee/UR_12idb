@@ -69,7 +69,7 @@ class UR3(UR):
 #    camtcp = [-0.001, 0.04, 0.015, -math.pi/180*30, 0, 0]
     camtcp = [0, 0.0433, 0.015, -math.pi/180*30, 0, 0]
 
-    def __init__(self, name = 'UR3', package=ROBOT_PYTHON_PACKAGE, grippertype=1, cameratype=1):
+    def __init__(self, name = 'UR3', package=ROBOT_PYTHON_PACKAGE, grippertype=1, cameratype=1, use_rtde = False):
 # definition of Cartesian Axis of UR3 at 12idb.
 # X : positive - Out board
 # X : negative - In board
@@ -93,7 +93,7 @@ class UR3(UR):
             print(f"{name} does not exist in ../RobotList/list_of_robots.json")
             return
 
-        super(UR3, self).__init__(IP, package=package, grippertype=grippertype, cameratype=cameratype)
+        super(UR3, self).__init__(IP, package=package, grippertype=grippertype, cameratype=cameratype, use_rtde = use_rtde)
 
         self.name = name
         self.ini_name = os.path.join(text_file_path, 'ini', '%s.ini'%name)

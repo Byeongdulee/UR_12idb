@@ -100,7 +100,7 @@ class UR_cam_grip(QObject):
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
     camtcp = [0, 0.0433, 0.015, -math.pi/180*30, 0, 0]
 
-    def __init__(self, name = 'UR3', package='urxe', grippertype=1, cameratype=1):
+    def __init__(self, name = 'UR3', package='urxe', grippertype=1, cameratype=1, use_rtde=False):
         super().__init__()
         # grippertype:
         #   0: No gripper
@@ -126,14 +126,15 @@ class UR_cam_grip(QObject):
         if package == 'rtde':
             from rtde.robot import Robot
             from rtde.robot import RobotiqGripper
+            use_rtde = True
 
         try:
-            self.robot = Robot(IP)
+            self.robot = Robot(IP,use_rtde=use_rtde)
         except TimeoutError:
             raise RobotException(f'Robot {IP} does not respond.')
         except ursecmon.ProtectiveStopException:
             print("Protective stoppped.. Connecting again.")
-            self.robot = Robot(IP)
+            self.robot = Robot(IP,use_rtde=use_rtde)
 
         if cameratype==2:
             self.camera = camera(IP='')

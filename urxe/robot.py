@@ -31,7 +31,7 @@ class URRobot(urrobot.URRobot):
     Rmq: A program sent to the robot i executed immendiatly and any running program is stopped
     """
 
-    def __init__(self, host, use_rt=False, urFirm=None):
+    def __init__(self, host, use_rt=False, urFirm=None, use_rtde=False):
         self.logger = logging.getLogger("urx")
         self.host = host
         self.urFirm = urFirm
@@ -45,6 +45,9 @@ class URRobot(urrobot.URRobot):
             self.rtmon = urrtmon.URRTMonitor(self.host, self.urFirm)  # som information is only available on rt interface
             self.rtmon.start()
             self.rtmon.set_csys(self.csys)
+        if use_rtde:
+            import rtde_receive as rr
+            self.rtde = rr.RTDEReceiveInterface(host)
         # precision of joint movem used to wait for move completion
         # the value must be conservative! otherwise we may wait forever
         self.joinEpsilon = 0.01
@@ -52,10 +55,10 @@ class URRobot(urrobot.URRobot):
         self.max_float_length = 6  # FIXME: check max length!!!
 
         self.secmon.wait()  # make sure we get data from robot before letting clients access our methods
-
+    
 class Robot(robot.Robot):
-    def __init__(self, host, use_rt=True, urFirm=(5.9)) -> None:
-        URRobot.__init__(self, host, use_rt=use_rt, urFirm=urFirm)
+    def __init__(self, host, use_rt=True, urFirm=(5.9), use_rtde=False) -> None:
+        URRobot.__init__(self, host, use_rt=use_rt, urFirm=urFirm, use_rtde=use_rtde)
         self.csys = m3d.Transform()
         FORMAT = '%(message)s'
         logging.basicConfig(format=FORMAT)
@@ -102,6 +105,20 @@ class Robot(robot.Robot):
         if wait:
             while self.is_program_running():
                 time.sleep(0.01)
+
+    def write_output(self, address=12, val=0):
+        """
+        write digital value
+        """
+        assert(address in range(12, 20))
+        
+        if isinstance(val, float):
+            cmd = 'write_output_float_register'
+        if isinstance(val, int):
+            cmd = 'write_output_integer_register'
+        address = str(address)
+        val = str(val)
+        self.send_program('%s(%s, %s)' % (cmd, address, val))
 
 class RobotiqScript(robotiq_two_finger_gripper.RobotiqScript): 
     # should make a variable named "rq_pos" on the teach pendent to be able to run this.
