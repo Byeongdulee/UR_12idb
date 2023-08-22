@@ -189,6 +189,9 @@ class pipet():
     def get_speed_stop(self):
         return self._get_var('?3')
 
+    def get_max_homing_steps(self):
+        return self._get_var('?7')
+
     def get_speed_stop_percent(self):
         return self.get_speed_stop()/self._max_stop_speed*100
 
@@ -207,6 +210,9 @@ class pipet():
     def get_run_current(self):
         return self._get_var('?26')
 
+    def get_parameter(self, parameter):
+        return self._get_var(parameter, isfloat = False)
+
     def initialize(self):
         self.send_command("z1600A0A10z0", wait=True)
     
@@ -217,7 +223,7 @@ class pipet():
         self._set_var("m", value)
     
     def set_step(self, value):
-        self.send_command(f"z{value}A{value-10}A{value}z{value}", wait=True)
+        self.send_command(f"z{value}", wait=True)
     
     def dispense(self, vol=0, percent=0, start=0, speed=0, stop=0):
         cvol = self.get_volume()
@@ -429,7 +435,7 @@ class pipet():
         """
         return self._set_vars(OrderedDict([(variable, value)]), timeout = timeout, wait=wait)
 
-    def _get_var(self, variable: str, trial=1):
+    def _get_var(self, variable: str, trial=1, isfloat=True):
         """Retrieve the value of a variable from the pipet, blocking until the
         response is received or the socket times out.
         :param variable: Name of the variable to retrieve.
@@ -458,6 +464,8 @@ class pipet():
                     self.connect()
                     cnt = cnt + 1
                     time.sleep(0.1*cnt)
+        if isfloat == False:
+            return data
         if len(data)>0:
             try:
                 ans = self._decode_answer(data)
