@@ -147,6 +147,7 @@ class pipet():
                       "stop_bits": 1,
                       "rx_idle_chars": 1.5,
                       "tx_idle_chars": 3.5}
+        self._step = 0
 
     def get_step(self):
         pos = self._get_var('?0')
@@ -160,6 +161,7 @@ class pipet():
 #                print(f"Pipet: get_step tried {cnt} times.")
             cnt = cnt+1
             self.connect()
+        self._step = pos
         if cnt==timeout:
             raise CommunicationException("Pipet Communication Timeout.")
         return pos
@@ -213,6 +215,9 @@ class pipet():
 
     def set_motorcurrent(self, value=50):
         self._set_var("m", value)
+    
+    def set_step(self, value):
+        self.send_command(f"z{value}A{value-10}A{value}z{value}", wait=True)
     
     def dispense(self, vol=0, percent=0, start=0, speed=0, stop=0):
         cvol = self.get_volume()
