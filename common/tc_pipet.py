@@ -100,6 +100,12 @@ class CommunicationException(Exception):
 class PipetError(Exception):
     pass
 
+class PipetTimeout(Exception):
+    pass
+
+class PipetSocketError(Exception):
+    pass
+
 class pipet():
     # host = 'robot_ip'
     # port = 54321# Remains the same, because it is specified as default port in URCaps code
@@ -150,11 +156,18 @@ class pipet():
         self._step = 0
 
     def get_step(self):
-        pos = self._get_var('?0')
+        try:
+            pos = self._get_var('?0')
+            return pos
+        except PipetSocketError:
+            pos = -1
         timeout = 10
         cnt = 1
         while (pos<0) and (cnt<timeout):
-            pos = self._get_var('?0', trial=cnt)
+            try:
+                pos = self._get_var('?0', trial=cnt)
+            except PipetSocketError:
+                pos = -1
             time.sleep(0.1*cnt)
             if cnt>1:
                 self.disconnect()
@@ -314,7 +327,7 @@ class pipet():
             newpos = pos + newpos
         return self._set_var('A', newpos)
 
-    def connect(self, hostname: str=HOST, port: int = 54321, socket_timeout: float = 2.0) -> None:
+    def connect(self, hostname: str=HOST, port: int = 54321, socket_timeout: float = 0.2) -> None:
         """Connects to a pipet at the given address.
         """
         if hasattr(self, hostname):
@@ -353,40 +366,35 @@ class pipet():
             cmd += f"{variable}{val}"
         cmd += 'R\r'  # R for execution and new line is required for the command to finish
         # atomic commands send/rcv
-        with self.command_lock:
-            try:
-                self.socket.sendall(cmd.encode(self.ENCODING))
-            except:
-                self.connect()
-                self.socket.sendall(cmd.encode(self.ENCODING))
-            time.sleep(0.01)
-            ans = ""
-            data = ""
-            try:
-                data = self.socket.recv(1024)
-#                print(data, "Normal")
-                # while data[-1] != 10:
-                #     print(data[-1], "AAAAAA")
-                #     data += self.socket.recv(1024)
-                # print(data, "Normal")
-            except ConnectionAbortedError:
-#                print("AbortError")
-                self.connect()
-                data = ""
-            except socket.timeout:
- #               print("TimeoutError")
-                self.connect()
-                data = ""
-            try:
-                ans = self._decode_answer(data)
-            except:
-#                print(data, "Decode error on line 347")
-                pass
-            if len(ans)>0:
-                errcheck, notbusy = self._status_check(ans)
-            else:
-                wait = False
-                errcheck = False
+        status, val, data = self.query(cmd)
+        errcheck, notbusy = self._status_check(status)
+#         with self.command_lock:
+#             self.socket.sendall(cmd.encode(self.ENCODING))
+#             time.sleep(0.1)
+#             ans = ""
+#             data = ""
+#             try:
+#                 data = self.socket.recv(1024)
+# #                print(data, "Normal")
+#             except CommunicationException:
+#                 data = ""
+#             except ConnectionAbortedError:
+#                 self.connect()
+#                 data = ""
+#             except socket.timeout:
+#                 print("socket timeout in set_var")
+#                 time.sleep(0.1)
+#                 data = ""
+#             try:
+#                 ans = self._get_answer(data)
+#             except:
+# #                print(data, "Decode error on line 347")
+#                 pass
+#             if len(ans)>0:
+#                 errcheck, notbusy = self._status_check(ans)
+#             else:
+#                 wait = False
+#                 errcheck = False
 
         t = time.time()
         timeout = 5
@@ -406,23 +414,71 @@ class pipet():
         readdone = False
         timeout = 10
         cnt = 1
-        with self.command_lock:
-            while ((not readdone) and (cnt < timeout)):
-                self.socket.sendall(cmd.encode(self.ENCODING))
-                time.sleep(0.05)
-                try:
-                    data = self.socket.recv(1024)
-#                    print(data, "get_status")
-                    ans = self._decode_answer(data)
-                    errcheck, busycheck = self._status_check(ans)
-                    readdone = True
-                except:
-                    self.connect()
-                    cnt = cnt + 1
-            if cnt==timeout:
-                raise CommunicationException
+        while ((not readdone) and (cnt < timeout)):
+            try:
+                status, _, _ = self.query(cmd)
+                errcheck, busycheck = self._status_check(status)
+                readdone = True
+            except CommunicationException:
+                time.sleep(0.1*cnt)
+            except socket.timeout:
+                time.sleep(0.1*cnt)
+            except ConnectionAbortedError:
+                self.connect()
+                time.sleep(0.1*cnt)
+            cnt = cnt + 1
+        if cnt==timeout:
+            raise CommunicationException("Time out.")
         return (errcheck, busycheck)
     
+    def query(self, cmd, trial = 10, timeofsleep = 0.1):
+        readdone = False
+        cnt = 1
+        data = ""
+        status = ""
+        with self.command_lock:
+            while (readdone==False) and (cnt<trial):
+                try:
+                    self.socket.sendall(cmd.encode(self.ENCODING))
+                    time.sleep(timeofsleep)
+                    data = self._recv()
+                    readdone = True
+                except CommunicationException:
+                    time.sleep(0.1*cnt)
+                except ConnectionAbortedError:
+                    self.connect()
+                except PipetTimeout:
+                    return "", "", data
+                cnt = cnt+1
+            if cnt==trial:
+                raise PipetTimeout
+        if len(data)>0:
+            status, val = self._get_answer(data)
+        else:
+            val = ""
+        return status, val, data
+
+    def _recv(self):
+        data = b''
+        k = b'/'
+        timeout = 0.5
+        t = time.time()
+        while True:
+            try:
+                k = self.socket.recv(1)
+                if len(k)>0:
+                    if isinstance(k, bytes):
+                        data += k
+                    if k[0] == 10:
+                        break
+                else:
+                    break
+                if (time.time()-t>timeout):
+                    raise PipetTimeout
+            except socket.timeout:
+                raise PipetTimeout
+        return data
+
     def send_command(self, command, value="", timeout=10, wait=True):
         return self._set_var(command, value=value, timeout=timeout, wait=wait)
     
@@ -435,7 +491,7 @@ class pipet():
         """
         return self._set_vars(OrderedDict([(variable, value)]), timeout = timeout, wait=wait)
 
-    def _get_var(self, variable: str, trial=1, isfloat=True):
+    def _get_var(self, variable: str, trial=3, isfloat=True):
         """Retrieve the value of a variable from the pipet, blocking until the
         response is received or the socket times out.
         :param variable: Name of the variable to retrieve.
@@ -445,40 +501,40 @@ class pipet():
         cmd = "/1"
         cmd += f"{variable}"
         cmd += '\r'
-        readdone = False
-        timeout = 3
-        cnt = 1
-        with self.command_lock:
-            data = ""
-            while ((not readdone) and (cnt<timeout)):
-                self.socket.sendall(cmd.encode(self.ENCODING))
-                time.sleep(0.1*trial)
-                try:
-                    data = self.socket.recv(1024)
-                    readdone = True
-                except ConnectionAbortedError:
-                    self.connect()
-                    cnt = cnt + 1
-                    time.sleep(0.1*cnt)
-                except socket.timeout:
-                    self.connect()
-                    cnt = cnt + 1
-                    time.sleep(0.1*cnt)
+        #readdone = False
+        #cnt = 1
+        #data = ""
+        status, val, data = self.query(cmd)
+        resp, notbusy = self._status_check(status)
+        if resp == False:
+            raise PipetSocketError
         if isfloat == False:
-            return data
-        if len(data)>0:
-            try:
-                ans = self._decode_answer(data)
-            except:
-                print(data, "Pipet: Return decode error. Reading again.")
-                ans = "-1"
-            try:
-                return float(ans)
-            except ValueError:
-                print(ans, "Pipet: Return decode error. ans should be a number string.")
-                return -1
+            return val
+        try:
+            return float(val)
+        except ValueError:
+#            print(data, "Pipet: Return decode error. ans should be a number string.")
+            raise PipetSocketError
+
+    def _get_answer(self,data):
+        if len(data)==0:
+            raise CommunicationException
+        dt = data.split(b'\n')
+        if len(dt)==1:
+            raise CommunicationException
+        # return should start from /x (id of the controller) and ends with \n
+        data = dt[len(dt)-2]
+        data, _ = data.split(b'\x03')
+        if data[0] != 47:
+            raise CommunicationException
+        status = data[2]
+        status = chr(status)
+        if len(data)>2:
+            value = data[3:]
+            value = value.decode(self.ENCODING)
         else:
-            return -1
+            value = None
+        return status, value
 
     def _decode_answer(self, data):
         if len(data)==0:
@@ -494,14 +550,17 @@ class pipet():
         return ans
     
     def _status_check(self, data):
+        resp = ""
+        notbusy = False
         if len(data) == 0:
-            raise CommunicationException
+            return (False, notbusy)
+#            raise CommunicationException
         if data == "`":
 #            print('Not busy')
-            return (True, True)
+            return ("", True)
         if data == "@":
 #            print('Busy')
-            return (True, False)
+            return ("", False)
         if data.isupper():
             #isbusy = "Busy"
             notbusy = True
@@ -523,11 +582,12 @@ class pipet():
             resp = "Plunger Overload"
         if data == 'h':
             resp = "CAN Bus failure"
-        try:
-            print(resp, notbusy)
-        except:
-            print(data, "status_check")
-        return (False, notbusy)
+        raise PipetError(resp)
+#        try:
+#            print(resp, notbusy)
+#        except:
+#            print(data, "status_check")
+#        return (False, notbusy)
         # NoError_NotBusy = "`"
         # NoError_Busy = "@"
         # InitializationError_NotBusy = "a"
