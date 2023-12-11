@@ -303,7 +303,10 @@ class UR(UR_cam_grip):
         # pos is a coordinate in base coordinate.
         # returns the coordinate in the tool coordinate.
         trans = self.get_pose()
-        v = trans.get_pose_vector()
+        try:
+            v = trans.get_pos().array
+        except:
+            v = trans.get_pose_vector()
         trans.invert()
         if not isinstance(pos, m3d.Transform):
             pos = m3d.Transform([pos[0], pos[1], pos[2], v[3], v[4], v[5]])
@@ -312,7 +315,10 @@ class UR(UR_cam_grip):
 
     def get_orientation(self):
         # get rotation_vector.
-        m = self.get_pose().orient.get_rotation_vector().tolist()
+        try:
+            m = self.get_pose().orient.get_rotation_vector().array.tolist()
+        except:
+            m = self.get_pose().orient.get_rotation_vector().tolist()
         for i in range(0,2):
             m[i] = m[i]*180/math.pi
         return m
@@ -345,7 +351,10 @@ class UR(UR_cam_grip):
         # return the Cartesian position as a numpy array
         # if you want the Cartesian position as a list, use self.robot.getl()
         pose = self.get_pose()
-        return pose.get_pose_vector()
+        try:
+            return pose.get_pos().array
+        except:
+            return pose.get_pose_vector()
 
     ## new functions
     def is_Z_aligned(self):
