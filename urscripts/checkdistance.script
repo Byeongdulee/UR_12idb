@@ -13,7 +13,7 @@ def myprog():
     while (True):
         local targetTcpDirection=get_target_tcp_speed()
         local stepsToRetract=tool_contact(direction=targetTcpDirection)
-        if (stepsToRetract > 0):
+        if (stepsToRetract > __rep_force__):
         kill move_thread_han_5
         stopl(3.0)
         local backTrackMovement=get_actual_joint_positions_history(stepsToRetract)

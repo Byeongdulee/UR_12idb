@@ -122,6 +122,22 @@ class Robot():
         #data = CheckdistanceScript
         data = CheckdistanceScript.replace('__replace__', f'[{x}, {y}, {z}, 0, 0, 0]')
         data = data.replace('__backoff__', f'{backoff}')
+        data = data.replace('__rep_force__', '0')
+        if not hasattr(self, 'rc'):
+            raise RobotException("Robot is not at NORMAL_MODE.")
+        self.rc.sendCustomScript(data)
+        while not self.rr.is_program_running():
+            time.sleep(0.01)
+        if wait:
+            while self.rr.is_program_running():
+                time.sleep(0.01)
+        self.rc.stopScript()
+
+    def screw(self, z=0, rz=0, forcelimit=10, backoff=0, wait=True):
+        #data = CheckdistanceScript
+        data = CheckdistanceScript.replace('__replace__', f'[0, 0, {z}, 0, 0, {rz}]')
+        data = data.replace('__backoff__', f'{backoff}')
+        data = data.replace('__rep_force__', f'{forcelimit}')
         if not hasattr(self, 'rc'):
             raise RobotException("Robot is not at NORMAL_MODE.")
         self.rc.sendCustomScript(data)
