@@ -79,6 +79,7 @@ class UR3(UR):
         try:
             #with open('../RobotList/list_of_robots.json') as json_file:
             jsname = 'list_of_robots.json'
+            fn = jsname
             if os.path.exists('RobotList'):
                 fn = os.path.join('RobotList', jsname)
             if os.path.exists('../RobotList'):
@@ -1187,6 +1188,9 @@ class UR5(UR):
     Waypoint_tool3_p = [-0.71556695,  0.00796828,  0.209, -2.18919547,  2.23820588, -0.00663184]
     Waypoint_pipet_p = [-0.59889272,  0.00900487,  0.208, -2.18934897,  2.23850674, -0.00610946]
     Waypoint_gripper_p = [-0.48683908,  0.01013423,  0.208, -2.18894075,  2.23858863, -0.00619396]
+    Waypoint_tool3_p = [-0.71556695,  0.00796828,  0.1846, -2.18919547,  2.23820588, -0.00663184]
+    Waypoint_pipet_p = [-0.59889272,  0.00900487,  0.1846, -2.18934897,  2.23850674, -0.00610946]
+    Waypoint_gripper_p = [-0.48683908,  0.01013423,  0.1846, -2.18894075,  2.23858863, -0.00619396]
 
     _TCP2CAMdistance = 0.12
 #    tcp = [0.0,0.0,0.167,0.0,0.0,0.0]
@@ -1204,6 +1208,7 @@ class UR5(UR):
         try:
             #with open('../RobotList/list_of_robots.json') as json_file:
             jsname = 'list_of_robots.json'
+            fn = jsname
             if os.path.exists('RobotList'):
                 fn = os.path.join('RobotList', jsname)
             if os.path.exists('../RobotList'):
