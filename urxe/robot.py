@@ -95,10 +95,11 @@ class Robot(robot.Robot):
         while not (np.round(np.array(_tcp), 5) == np.round(np.array(tcp), 5)).all():
             _tcp = self.get_tcp()
 
-    def bump(self, x=0, y=0, z=0, backoff=0, wait=True):
+    def bump(self, x=0, y=0, z=0, backoff=0, force = 0, wait=True):
         #data = CheckdistanceScript
         data = CheckdistanceScript.replace('__replace__', f'[{x}, {y}, {z}, 0, 0, 0]')
         data = data.replace('__backoff__', f'{backoff}')
+        data = data.replace('__rep_force__', f'{force}')
         self.send_program(data)
         while not self.is_program_running():
             time.sleep(0.01)
