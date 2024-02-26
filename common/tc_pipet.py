@@ -334,10 +334,15 @@ class pipet():
             con = (self.hostname, self.port)
         else:
             con = (hostname, port)
+        self.address = con
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect(con)
         self.socket.settimeout(socket_timeout)
 
+    def reconnect(self, socket_timeout: float = 0.2) -> None:
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.connect(self.address)
+        self.socket.settimeout(socket_timeout)
 
     def disconnect(self) -> None:
         """Closes the connection with the gripper."""
@@ -368,34 +373,6 @@ class pipet():
         # atomic commands send/rcv
         status, val, data = self.query(cmd)
         errcheck, notbusy = self._status_check(status)
-#         with self.command_lock:
-#             self.socket.sendall(cmd.encode(self.ENCODING))
-#             time.sleep(0.1)
-#             ans = ""
-#             data = ""
-#             try:
-#                 data = self.socket.recv(1024)
-# #                print(data, "Normal")
-#             except CommunicationException:
-#                 data = ""
-#             except ConnectionAbortedError:
-#                 self.connect()
-#                 data = ""
-#             except socket.timeout:
-#                 print("socket timeout in set_var")
-#                 time.sleep(0.1)
-#                 data = ""
-#             try:
-#                 ans = self._get_answer(data)
-#             except:
-# #                print(data, "Decode error on line 347")
-#                 pass
-#             if len(ans)>0:
-#                 errcheck, notbusy = self._status_check(ans)
-#             else:
-#                 wait = False
-#                 errcheck = False
-
         t = time.time()
         timeout = 5
         if wait:
@@ -423,9 +400,8 @@ class pipet():
                 time.sleep(0.1*cnt)
             except socket.timeout:
                 time.sleep(0.1*cnt)
-            except ConnectionAbortedError:
-                self.connect()
-                time.sleep(0.1*cnt)
+            except :
+                self.reconnect()
             cnt = cnt + 1
         if cnt==timeout:
             raise CommunicationException("Time out.")
@@ -445,10 +421,11 @@ class pipet():
                     readdone = True
                 except CommunicationException:
                     time.sleep(0.1*cnt)
-                except ConnectionAbortedError:
-                    self.connect()
                 except PipetTimeout:
-                    return "", "", data
+                    #return "", "", data
+                    self.reconnect()
+                except:
+                    self.reconnect()
                 cnt = cnt+1
             if cnt==trial:
                 raise PipetTimeout
