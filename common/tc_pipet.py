@@ -159,25 +159,30 @@ class pipet():
         try:
             pos = self._get_var('?0')
             return pos
-        except PipetSocketError:
-            pos = -1
-        timeout = 10
-        cnt = 1
-        while (pos<0) and (cnt<timeout):
-            try:
-                pos = self._get_var('?0', trial=cnt)
-            except PipetSocketError:
-                pos = -1
-            time.sleep(0.1*cnt)
-            if cnt>1:
-                self.disconnect()
-#                print(f"Pipet: get_step tried {cnt} times.")
-            cnt = cnt+1
-            self.connect()
-        self._step = pos
-        if cnt==timeout:
-            raise CommunicationException("Pipet Communication Timeout.")
-        return pos
+        except:
+            return -1
+#         try:
+#             pos = self._get_var('?0')
+#             return pos
+#         except PipetSocketError:
+#             pos = -1
+#         timeout = 10
+#         cnt = 1
+#         while (pos<0) and (cnt<timeout):
+#             try:
+#                 pos = self._get_var('?0', trial=cnt)
+#             except PipetSocketError:
+#                 pos = -1
+#             time.sleep(0.1*cnt)
+#             if cnt>1:
+#                 self.disconnect()
+# #                print(f"Pipet: get_step tried {cnt} times.")
+#             cnt = cnt+1
+#             self.connect()
+#         self._step = pos
+#         if cnt==timeout:
+#             raise CommunicationException("Pipet Communication Timeout.")
+#         return pos
     
     def get_step_percent(self):
         pos = self.get_step()
@@ -255,11 +260,11 @@ class pipet():
             par.update({"V":speed})
         if stop !=0:
             par.update({"c":stop})
-        self._set_vars(par)
-
+        self._set_vars(par, wait=False)
+        time.sleep(1.5)
         newpos = self.get_step()
         while (newpos > cpos-pos):
-            time.sleep(0.1)
+            time.sleep(2)
             _pos = self.get_step()
             if newpos == _pos:
                 break
@@ -285,11 +290,11 @@ class pipet():
             par.update({"V":speed})
         if stop !=0:
             par.update({"c":stop})
-        self._set_vars(par)
-
+        self._set_vars(par, wait=False)
+        time.sleep(1.5)
         newpos = self.get_step()
         while (newpos < cpos+pos):
-            time.sleep(0.1)
+            time.sleep(2)
             _pos = self.get_step()
             if newpos == _pos:
                 break
@@ -327,7 +332,7 @@ class pipet():
             newpos = pos + newpos
         return self._set_var('A', newpos)
 
-    def connect(self, hostname: str=HOST, port: int = 54321, socket_timeout: float = 0.2) -> None:
+    def connect(self, hostname: str=HOST, port: int = 54321, socket_timeout: float = 1) -> None:
         """Connects to a pipet at the given address.
         """
         if hasattr(self, hostname):
@@ -340,6 +345,8 @@ class pipet():
         self.socket.settimeout(socket_timeout)
 
     def reconnect(self, socket_timeout: float = 0.2) -> None:
+        #print("0.5s later, socket will be reconnected")
+        #time.sleep(0.5)
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect(self.address)
         self.socket.settimeout(socket_timeout)
@@ -372,15 +379,18 @@ class pipet():
         cmd += 'R\r'  # R for execution and new line is required for the command to finish
         # atomic commands send/rcv
         status, val, data = self.query(cmd)
-        errcheck, notbusy = self._status_check(status)
-        t = time.time()
-        timeout = 5
+#        print("query sent")
+        errcheck = None
         if wait:
+#            print("Will check status")
+            errcheck, notbusy = self._status_check(status)
+            t = time.time()
+            timeout = 5
             while not notbusy:
-                time.sleep(0.1)
+                time.sleep(1)
                 errcheck, notbusy = self.get_status()
                 if time.time()-t > timeout:
-#                    print("get_status timeout in set_vars.")
+                    print("get_status timeout in set_vars.")
                     break
         return errcheck
             # if noerror:
@@ -393,7 +403,7 @@ class pipet():
         cnt = 1
         while ((not readdone) and (cnt < timeout)):
             try:
-                status, _, _ = self.query(cmd)
+                status, _, _ = self.query(cmd, timeofsleep=1)
                 errcheck, busycheck = self._status_check(status)
                 readdone = True
             except CommunicationException:
@@ -407,14 +417,15 @@ class pipet():
             raise CommunicationException("Time out.")
         return (errcheck, busycheck)
     
-    def query(self, cmd, trial = 10, timeofsleep = 0.1):
+    def query(self, cmd, trial = 1, timeofsleep = 0.1):
         readdone = False
-        cnt = 1
+        cnt = 0
         data = ""
         status = ""
         with self.command_lock:
             while (readdone==False) and (cnt<trial):
                 try:
+#                    print(f"{cmd.encode(self.ENCODING)} will be sent")
                     self.socket.sendall(cmd.encode(self.ENCODING))
                     time.sleep(timeofsleep)
                     data = self._recv()
@@ -424,11 +435,11 @@ class pipet():
                 except PipetTimeout:
                     #return "", "", data
                     self.reconnect()
-                except:
+                except Exception as Err:
                     self.reconnect()
+                if cnt==trial:
+                    raise PipetTimeout
                 cnt = cnt+1
-            if cnt==trial:
-                raise PipetTimeout
         if len(data)>0:
             status, val = self._get_answer(data)
         else:
@@ -438,7 +449,7 @@ class pipet():
     def _recv(self):
         data = b''
         k = b'/'
-        timeout = 0.5
+        timeout = 0.2
         t = time.time()
         while True:
             try:
@@ -451,9 +462,16 @@ class pipet():
                 else:
                     break
                 if (time.time()-t>timeout):
+                #    data = ""
+                #    self.reconnect()
                     raise PipetTimeout
             except socket.timeout:
-                raise PipetTimeout
+#                print("Socket time out")
+#                data = ""
+#                self.reconnect()
+#                time.sleep(0.2)
+#                break
+                raise PipetSocketError
         return data
 
     def send_command(self, command, value="", timeout=10, wait=True):
@@ -481,7 +499,15 @@ class pipet():
         #readdone = False
         #cnt = 1
         #data = ""
-        status, val, data = self.query(cmd)
+        cnt = 0
+        while True:
+            status, val, data = self.query(cmd)
+            if len(data)>0:
+                break
+            if cnt>trial:
+                break
+            time.sleep(2)
+            cnt = cnt + 1
         resp, notbusy = self._status_check(status)
         if resp == False:
             raise PipetSocketError

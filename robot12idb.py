@@ -1237,6 +1237,13 @@ class UR5(UR):
     def set_toolchanger_lock(self):
         self.robot.set_digital_out(0, 0)
     
+    def tool_initialize(self):
+        if len(self.tool_engaged) == 0:
+            self.robot.set_digital_out(0, 0)
+            print("Ready for engaging a tool.")
+        else:
+            self.disengage()
+            
     def engage(self, tool='pipet', for_disengage=False):
         if self.robot.get_digital_out(0)==0: # if a tool is already engaged.
             if not for_disengage: # if this command is not for dis_engaging the tool.
