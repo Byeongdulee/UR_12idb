@@ -1237,9 +1237,9 @@ class UR5(UR):
     def set_toolchanger_lock(self):
         self.robot.set_digital_out(0, 0)
     
-    def tool_initialize(self):
+    def toolchanger_initialize(self):
         if len(self.tool_engaged) == 0:
-            self.robot.set_digital_out(0, 0)
+            self.set_toolchanger_unlock()
             print("Ready for engaging a tool.")
         else:
             self.disengage()
@@ -1272,12 +1272,13 @@ class UR5(UR):
         else:
             self.set_toolchanger_lock()
         self.moveto(p)
-        self.tool_engaged = tool
         if for_disengage:
+            self.tool_engaged = ''
             if tool=='pipet':
                 self.pipet.disconnect()
             self.set_tool_communication_off()
         else:
+            self.tool_engaged = tool
             if tool=='pipet':
                 self.set_tool_communication(self.pipet)
                 self.pipet.connect(self.robot.IP)        
