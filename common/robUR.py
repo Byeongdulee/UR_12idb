@@ -94,7 +94,7 @@ class RobotMode(Enum):
     ROBOT_MODE_RUNNING			= 7	
     ROBOT_MODE_UPDATING_FIRMWARE = 8	
 
-class UR_cam_grip(QObject):
+class UR(QObject):
     # unit of position vector : meter.
     _TCP2CAMdistance = 0.12
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
@@ -216,6 +216,7 @@ class UR_cam_grip(QObject):
         return self.robot.get_safety_mode()
     
     def get_status(self):
+        # getting saftey status from dashboard.
         return self.dashboard.get_status()
 
     def unlock_stop(self):
@@ -268,27 +269,31 @@ class UR_cam_grip(QObject):
     def set_tool_communication_off(self):
         self.robot.set_tool_communication(enabled=False)
 
-######## How to use m3d.
-# To rotate in the TCP frame,
-# trans = self.get_pose()  # here trans represents the transformed TCP coordinate.
-# To rate in the robot base frame,
-# trans = m3d.Transform()  # make a new m3d object, 
+    def get_movement_state(self) -> str:
+        """Gets robot movement status by checking robot joint values.
+        Return (str) READY if robot is not moving
+                     BUSY if robot is moving
+        """
+        current_location = self.getj()
+        current_location = [
+            "%.2f" % value for value in current_location
+        ]  # rounding to 3 digits
+        # print(current_location)
+        if not hasattr(self, 'robot_current_joint_angles'):
+            self.robot_current_joint_angles = current_location
+            current_location = self.getj()
+            current_location = [
+                "%.2f" % value for value in current_location
+            ]  # rounding to 3 digirobot_current_joint_anglests
 
-# Then, trans.orient.rotate_xt(), rotate_yt(), rotate_zt(), or rotate_t(ax, angle)
+        if self.robot_current_joint_angles == current_location:
+            movement_state = "READY"
+        else:
+            movement_state = "BUSY"
 
-# def ind2sub(ind, array_shape):
-#     rows = int(ind / array_shape[1])
-#     cols = (int(ind) % array_shape[1]) # or numpy.mod(ind.astype('int'), array_shape[1])
-#     return (rows, cols)
+        self.robot_current_joint_angles = current_location
 
-# def sub2ind(rows, cols, array_shape):
-#     return rows*array_shape[1] + cols
-
-# This class add advanced methods to the UR_cam_grip class.
-# for example, combining camera, dashboard, and robot motion all together.
-class UR(UR_cam_grip):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        return movement_state
 
     def calc_position_in_base(self, pos):
         # pos is a coordinate in tcp coordinate.
@@ -364,26 +369,6 @@ class UR(UR_cam_grip):
             return False
         else:
             return True
-
-    def is_camera_facedown(self):
-        vec, _, _ = self.get_camera_vector()
-        if abs(vec[2]) < 0.999:
-            return False
-        else:
-            return True
-
-    def rotz_camera2x(self):
-        v = [[0, 1, 0], [1, 0, 0], [0, 0, -1]]
-        t = m3d.Orientation(v)
-        t.set_pos(self.get_pos())
-        self.set_pose(t, 0.5, 0.5, wait=True)
-
-    def rotz_camera2y(self):
-        v = [[0, 1, 0], [1, 0, 0], [0, 0, -1]]
-        t = m3d.Orientation(v)
-        t.set_pos(self.get_pos())
-        self.set_pose(t, 0.5, 0.5, wait=True)
-        
 # Linear motions
     # absolute positinng
     def move2x(self, val, acc=0.5, vel=0.5, wait=True):
@@ -610,7 +595,6 @@ class UR(UR_cam_grip):
         t.orient.set_array(v)
         #print(t.orient.get_rotation_vector())
         return self.set_orientation_rad(t.orient.get_rotation_vector(), acc=0.5, vel=0.5)
-
 # special functions
 
     def measureheight(self): # measure height by bumping along -z direction.
@@ -625,6 +609,28 @@ class UR(UR_cam_grip):
         #print(v0, v1)
         #distance = v[2]+0.01
         return v
+
+######## How to use m3d.
+# To rotate in the TCP frame,
+# trans = self.get_pose()  # here trans represents the transformed TCP coordinate.
+# To rate in the robot base frame,
+# trans = m3d.Transform()  # make a new m3d object, 
+
+# Then, trans.orient.rotate_xt(), rotate_yt(), rotate_zt(), or rotate_t(ax, angle)
+
+# def ind2sub(ind, array_shape):
+#     rows = int(ind / array_shape[1])
+#     cols = (int(ind) % array_shape[1]) # or numpy.mod(ind.astype('int'), array_shape[1])
+#     return (rows, cols)
+
+# def sub2ind(rows, cols, array_shape):
+#     return rows*array_shape[1] + cols
+
+# This class add advanced methods to the UR_cam_grip class.
+# for example, combining camera, dashboard, and robot motion all together.
+class UR_cam_grip(UR):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
 # Gripper functions
     def activate_gripper(self):
@@ -650,6 +656,25 @@ class UR(UR_cam_grip):
         self.gripper.gripper_action(190)
 
 # Camera functions.
+    def is_camera_facedown(self):
+        vec, _, _ = self.get_camera_vector()
+        if abs(vec[2]) < 0.999:
+            return False
+        else:
+            return True
+
+    def rotz_camera2x(self):
+        v = [[0, 1, 0], [1, 0, 0], [0, 0, -1]]
+        t = m3d.Orientation(v)
+        t.set_pos(self.get_pos())
+        self.set_pose(t, 0.5, 0.5, wait=True)
+
+    def rotz_camera2y(self):
+        v = [[0, 1, 0], [1, 0, 0], [0, 0, -1]]
+        t = m3d.Orientation(v)
+        t.set_pos(self.get_pos())
+        self.set_pose(t, 0.5, 0.5, wait=True)
+
     def tweak_around_camera_axis(self, ang, acc=0.5, vel=0.5):
         if not hasattr(self, 'camera'):
             raise NoCameraException('No camera defined.')

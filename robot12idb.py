@@ -2,6 +2,7 @@
 import sys
 import os
 text_file_path = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(text_file_path)
 sys.path.append(os.path.join(text_file_path, 'ini'))
 sys.path.append(os.path.join(text_file_path, '..'))
 
@@ -24,6 +25,7 @@ import math3d as m3d
 import numpy as np
 import math
 import json
+from copy import deepcopy
 
 try:
     sys.path.append('..\python-urx')
@@ -36,7 +38,7 @@ except:
 # UR3
 # when you change the python package, change this line to choose a right class.
 #from urxe.robUR import UR_cam_grip
-from common.robUR import UR
+from common.robUR import UR_cam_grip
 from common.urcamera import Detection as atDET
 from common.urcamera import cal_AT2pose
 from common import utils
@@ -50,7 +52,7 @@ april_tag_size = {'heater': 0.0075, 'standard':0.015}
 class ToolChangerException(Exception):
     pass
 
-class UR3(UR):
+class UR3(UR_cam_grip):
     # unit of position vector : meter.
     sigGripper = pyqtSignal(str)
     sigMoving = pyqtSignal(bool)
@@ -80,6 +82,8 @@ class UR3(UR):
             #with open('../RobotList/list_of_robots.json') as json_file:
             jsname = 'list_of_robots.json'
             fn = jsname
+            if os.path.exists(os.path.join(text_file_path, jsname)):
+                fn = os.path.join(text_file_path, jsname)
             if os.path.exists('RobotList'):
                 fn = os.path.join('RobotList', jsname)
             if os.path.exists('../RobotList'):
@@ -1176,7 +1180,7 @@ def auto_align_12idb_standard_holder2(rob):
     print(f"The TCP is from {h}m above a surface.")
     
 # This is for UR5 robot at 12-ID-C.
-class UR5(UR):
+class UR5(UR_cam_grip):
     # unit of position vector : meter.
     sigGripper = pyqtSignal(str)
     sigMoving = pyqtSignal(bool)
@@ -1209,6 +1213,8 @@ class UR5(UR):
             #with open('../RobotList/list_of_robots.json') as json_file:
             jsname = 'list_of_robots.json'
             fn = jsname
+            if os.path.exists(os.path.join(text_file_path, jsname)):
+                fn = os.path.join(text_file_path, jsname)
             if os.path.exists('RobotList'):
                 fn = os.path.join('RobotList', jsname)
             if os.path.exists('../RobotList'):
@@ -1317,3 +1323,69 @@ class UR5(UR):
 
     def disengage_tool3(self):
         self.engage_tool3(True)
+
+    ## ptychography functions
+    def home(self, home_location: list = None) -> None:
+        """Moves the robot to the home location.
+
+        Args: home_location (list) A 6 joint value location
+        """
+
+        print("Homing the robot...")
+        if hasattr(self, 'home_pos'):
+            pos1 = self.home_pos
+        else:
+            pos1 = [-0.394, -0.1, 0.42, -2.218, 2.212, -0.007]
+        if home_location:
+            pos1 = home_location
+        self.home_pos = pos1
+        self.movel(pos1, acc=0.1, vel=0.2)
+        print("Robot homed for ptychography")
+    
+    def loadsample(self, pos_from=[-0.328, -0.239, 0.37, -2.218, 2.212, -0.007], pos_to: list = None) -> None:
+        above_target = deepcopy(pos_from)
+        above_target[2] += 0.05
+#        pos1 = [-0.328, -0.403, 0.42, -2.218, 2.212, -0.007] # home position
+        pos1 = [-0.394, -0.239, 0.42, -2.218, 2.212, -0.007] # temporary position
+#        if not hasattr(self, 'hom_pos'):
+#            self.home_pos = pos1
+        pos = [-0.394, -0.403, 0.349, -2.218, 2.212, -0.007] # sample stage position
+        if pos_to:
+            pos = pos_to
+        else:
+            pass
+        pos[2] += 0.0005 # drop sample 0.5mm above the surface....
+        postop = deepcopy(pos)
+        postop[2] += 0.05
+        self.release()
+        self.movels([above_target, pos_from], acc=0.1, vel=0.1)
+        self.grab()
+        self.movels([above_target, pos1, postop], acc=0.1, vel=0.1)
+        self.movel(pos)
+        self.release()
+        self.movels([postop, pos1], acc=0.1, vel=0.1)
+        self.home()
+        
+    def unloadsample(self, pos_to=[-0.328, -0.239, 0.37, -2.218, 2.212, -0.007], pos_from: list = None) -> None:
+        above_target = deepcopy(pos_to)
+        above_target[2] += 0.05
+        pos_to[2] += 0.0005 # drop sample 0.5mm above the surface....
+        #pos1 = [-0.328, -0.403, 0.42, -2.218, 2.212, -0.007]
+        pos1 = [-0.394, -0.239, 0.42, -2.218, 2.212, -0.007] # temporary position
+        pos = [-0.394, -0.403, 0.349, -2.218, 2.212, -0.007]
+#        if not hasattr(self, 'hom_pos'):
+#            self.home_pos = pos1
+        if pos_from:
+            pos = pos_from
+        else:
+            pass
+        postop = deepcopy(pos)
+        postop[2] += 0.05
+        self.release()
+        self.movels([postop, pos], acc=0.1, vel=0.1)
+        self.grab()
+        self.movels([postop, pos1, above_target], acc=0.1, vel=0.1)
+        self.movel(pos_to)
+        self.release()
+        self.movels([above_target, pos1], acc=0.1, vel=0.1)
+        self.home()       

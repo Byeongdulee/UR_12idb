@@ -8,16 +8,16 @@ import cv2
 import math3d as m3d
 import threading
 from scipy.spatial.transform import Rotation
-ISQR = True
+ISQR = False
 ISAPRILTAGS = True
 
 class NoUSBCameraException(Exception):
     pass
 
-try:
-    from pyzbar import pyzbar
-except ImportError:
-    ISQR = False
+#try:
+#    from pyzbar import pyzbar
+#except ImportError:
+#    ISQR = False
 
 try:
     from pupil_apriltags import Detector
