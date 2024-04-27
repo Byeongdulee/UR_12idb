@@ -5,4 +5,5 @@ build/
 .git/
 dist
 urxe.egg-info/
+list_of_robots.json
 __pycache__
