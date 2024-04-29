@@ -626,9 +626,9 @@ class UR(QObject):
 # def sub2ind(rows, cols, array_shape):
 #     return rows*array_shape[1] + cols
 
-# This class add advanced methods to the UR_cam_grip class.
+# This class add advanced methods to the UR_grip class.
 # for example, combining camera, dashboard, and robot motion all together.
-class UR_cam_grip(UR):
+class UR_grip(UR):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -654,6 +654,13 @@ class UR_cam_grip(UR):
         if not hasattr(self, 'gripper'):
             raise NoFingerException('No gripper defined.')
         self.gripper.gripper_action(190)
+
+# This class add advanced methods to the UR_cam_grip class.
+# for example, combining camera, dashboard, and robot motion all together.
+
+class UR_cam_grip(UR_grip):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
 # Camera functions.
     def is_camera_facedown(self):

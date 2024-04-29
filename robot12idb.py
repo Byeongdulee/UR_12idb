@@ -38,11 +38,17 @@ except:
 # UR3
 # when you change the python package, change this line to choose a right class.
 #from urxe.robUR import UR_cam_grip
+from common.robUR import UR_grip
 from common.robUR import UR_cam_grip
-from common.urcamera import Detection as atDET
-from common.urcamera import cal_AT2pose
+
+try:
+    from common.urcamera import Detection as atDET
+    from common.urcamera import cal_AT2pose
+    import camera_tools as cameratools
+except:
+    pass
+
 from common import utils
-import camera_tools as cameratools
 from common.tc_pipet import pipet
 ## Beamline specific variables
 april_tag_size = {'heater': 0.0075, 'standard':0.015}
@@ -1180,7 +1186,7 @@ def auto_align_12idb_standard_holder2(rob):
     print(f"The TCP is from {h}m above a surface.")
     
 # This is for UR5 robot at 12-ID-C.
-class UR5(UR_cam_grip):
+class UR5(UR_grip):
     # unit of position vector : meter.
     sigGripper = pyqtSignal(str)
     sigMoving = pyqtSignal(bool)
