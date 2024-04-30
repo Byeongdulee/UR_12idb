@@ -21,7 +21,7 @@ COPY ./pyproject.toml /ur_12idb/pyproject.toml
 COPY ./robot12idb.py /ur_12idb/robot12idb.py
 COPY ./ur_rest_node.py /ur_12idb/ur_rest_node.py
 COPY ./setup.py /ur_12idb/setup.py
-COPY ./build /ur_12idb/build
+#COPY ./build /ur_12idb/build
 # RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
 WORKDIR /ur_12idb
 RUN apt-get update && apt-get install ffmpeg libsm6 libxext6 -y
