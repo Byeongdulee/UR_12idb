@@ -25,8 +25,8 @@ COPY ./setup.py /ur_12idb/setup.py
 # RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
 WORKDIR /ur_12idb
 RUN apt-get update && apt-get install ffmpeg libsm6 libxext6 -y
-RUN git -C build clone https://github.com/ad-sdl/wei.git
-RUN python -m setup install
+#RUN git -C build clone https://github.com/ad-sdl/wei.git
+#RUN python -m setup install
 
 CMD ["python", "ur_12idb/ur_rest_node.py"]
 
