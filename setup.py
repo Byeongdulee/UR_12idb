@@ -11,7 +11,7 @@ setup(
     package_data={'urxe':['../*.py', '../ini/*.ini', '../common/*.py', '../urscripts/checkdistance.script', 'xml/record_configuration.xml', '../images/*.png'],
                   'rtde':['../ini/*.ini', '../common/*.py', '../urscripts/checkdistance.script']},
     provides=["urxe", 'rtde'],
-    install_requires=["urx", "robodk", "math3d", "pyzbar", "pupil-apriltags", "opencv-python", "fastapi"],
+    install_requires=["pyqt5", "urx", "robodk", "math3d", "pyzbar", "pupil-apriltags", "opencv-python", "fastapi"],
     license="GNU Lesser General Public License v3",
     classifiers=[
         "Programming Language :: Python",
