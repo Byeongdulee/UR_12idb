@@ -25,6 +25,7 @@ COPY ./setup.py /ur_12idb/setup.py
 # RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
 WORKDIR /ur_12idb
 RUN apt-get update && apt-get install ffmpeg libsm6 libxext6 -y
+RUN apt-get install libqt5gui5
 #RUN git -C build clone https://github.com/ad-sdl/wei.git
 RUN python -m setup install
 
