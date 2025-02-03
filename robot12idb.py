@@ -2,6 +2,7 @@
 import sys
 import os
 text_file_path = os.path.dirname(os.path.abspath(__file__))
+parent_path = os.path.dirname(os.path.abspath(text_file_path))
 sys.path.append(text_file_path)
 sys.path.append(os.path.join(text_file_path, 'ini'))
 sys.path.append(os.path.join(text_file_path, '..'))
@@ -27,14 +28,16 @@ import math
 import json
 from copy import deepcopy
 
-try:
-    sys.path.append('..\python-urx')
-except:
-    pass
-try:
-    sys.path.append('python-urx')
-except:
-    pass
+sys.path.append('%s\python-urx'%parent_path)
+
+# try:
+#     sys.path.append('%s\python-urx'%parent_path)
+# except:
+#     pass
+# try:
+#     sys.path.append('python-urx')
+# except:
+#     pass
 # UR3
 # when you change the python package, change this line to choose a right class.
 #from urxe.robUR import UR_cam_grip
