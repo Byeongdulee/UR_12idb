@@ -1,11 +1,13 @@
 ''' This program is to use the UR3 robot at 12IDB of APS'''
 import sys
 import os
-text_file_path = os.path.dirname(os.path.abspath(__file__))
-parent_path = os.path.dirname(os.path.abspath(text_file_path))
-sys.path.append(text_file_path)
-sys.path.append(os.path.join(text_file_path, 'ini'))
-sys.path.append(os.path.join(text_file_path, '..'))
+current_path = os.path.dirname(os.path.abspath(__file__))
+print(current_path)
+parent_path = os.path.dirname(os.path.abspath(current_path))
+sys.path.append(current_path)
+sys.path.append(parent_path)
+sys.path.append(os.path.join(current_path, 'ini'))
+sys.path.append(os.path.join(current_path, '..'))
 
 ROBOT_PYTHON_PACKAGE = 'urxe'
 
@@ -28,7 +30,7 @@ import math
 import json
 from copy import deepcopy
 
-sys.path.append('%s\python-urx'%parent_path)
+#sys.path.append('%s\python-urx'%parent_path)
 
 # try:
 #     sys.path.append('%s\python-urx'%parent_path)
@@ -47,6 +49,7 @@ from common.robUR import UR_cam_grip
 try:
     from common.urcamera import Detection as atDET
     from common.urcamera import cal_AT2pose
+    print(current_path)
     import camera_tools as cameratools
 except:
     pass
