@@ -2,10 +2,10 @@
 import sys
 import os
 current_path = os.path.dirname(os.path.abspath(__file__))
-print(current_path)
 parent_path = os.path.dirname(os.path.abspath(current_path))
 sys.path.append(current_path)
 sys.path.append(parent_path)
+current_path = os.getcwd()
 sys.path.append(os.path.join(current_path, 'ini'))
 sys.path.append(os.path.join(current_path, '..'))
 
@@ -49,7 +49,6 @@ from common.robUR import UR_cam_grip
 try:
     from common.urcamera import Detection as atDET
     from common.urcamera import cal_AT2pose
-    print(current_path)
     import camera_tools as cameratools
 except:
     pass
@@ -94,8 +93,8 @@ class UR3(UR_cam_grip):
             #with open('../RobotList/list_of_robots.json') as json_file:
             jsname = 'list_of_robots.json'
             fn = jsname
-            if os.path.exists(os.path.join(text_file_path, jsname)):
-                fn = os.path.join(text_file_path, jsname)
+            if os.path.exists(os.path.join(current_path, jsname)):
+                fn = os.path.join(current_path, jsname)
             if os.path.exists('RobotList'):
                 fn = os.path.join('RobotList', jsname)
             if os.path.exists('../RobotList'):
@@ -113,8 +112,8 @@ class UR3(UR_cam_grip):
         super(UR3, self).__init__(IP, package=package, grippertype=grippertype, cameratype=cameratype, use_rtde = use_rtde)
 
         self.name = name
-        self.ini_name = os.path.join(text_file_path, 'ini', '%s.ini'%name)
-        self._path_ini_name = os.path.join(text_file_path, 'ini', '%spath.ini'%name)
+        self.ini_name = os.path.join(current_path, 'ini', '%s.ini'%name)
+        self._path_ini_name = os.path.join(current_path, 'ini', '%spath.ini'%name)
         self.isSampleOnStage = False
         self.currentFrame = 0
         self.tweak_reference_axis_angle = None
@@ -1225,8 +1224,8 @@ class UR5(UR_grip):
             #with open('../RobotList/list_of_robots.json') as json_file:
             jsname = 'list_of_robots.json'
             fn = jsname
-            if os.path.exists(os.path.join(text_file_path, jsname)):
-                fn = os.path.join(text_file_path, jsname)
+            if os.path.exists(os.path.join(current_path, jsname)):
+                fn = os.path.join(current_path, jsname)
             if os.path.exists('RobotList'):
                 fn = os.path.join('RobotList', jsname)
             if os.path.exists('../RobotList'):
