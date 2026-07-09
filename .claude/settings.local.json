@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//tmp/**)",
+      "Bash(python -c \"import sys; sys.path.insert\\(0,'/home/beams15/S12IDB/python_codes/UR_12idb'\\); import robot12idb; print\\('import OK; module_path =', robot12idb.module_path\\)\")",
+      "Bash(pip show *)"
+    ]
+  }
+}
