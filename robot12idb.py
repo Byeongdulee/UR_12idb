@@ -5,11 +5,15 @@ current_path = os.path.dirname(os.path.abspath(__file__))
 parent_path = os.path.dirname(os.path.abspath(current_path))
 sys.path.append(current_path)
 sys.path.append(parent_path)
+# Directory where this module lives; used to locate ini/ and list_of_robots.json
+# independent of the current working directory.
+module_path = current_path
 current_path = os.getcwd()
 sys.path.append(os.path.join(current_path, 'ini'))
 sys.path.append(os.path.join(current_path, '..'))
 
 ROBOT_PYTHON_PACKAGE = 'urxe'
+#ROBOT_PYTHON_PACKAGE = 'rtde'
 
 QRPVavailable = False
 try:
@@ -25,6 +29,34 @@ from PyQt5.QtCore import pyqtSignal
 import time
 import numpy
 import math3d as m3d
+# ── math3d 4.x compatibility ───────────────────────────────────────────────
+# math3d 4.0.0 changed Transform.pose_vector to return a PoseVector object
+# (with only a `.array`), whereas 3.x returned a plain ndarray, and it removed
+# Transform.get_pose_vector() entirely. The UR robot stack (UR_12idb AND
+# python-urx) was written against the 3.x ndarray API — it calls
+# pose_vector.tolist(), indexes/iterates pose_vector, and passes it straight to
+# movel/movec, and calls get_pose_vector(). Restore the ndarray-returning
+# behaviour so all of that works on both 3.x and 4.x. Patching the shared
+# math3d.Transform class here (imported before any robot motion) fixes every
+# downstream user, including python-urx. No-op on 3.x (get_pose_vector exists).
+if not hasattr(m3d.Transform, "get_pose_vector"):
+    _m3d_pv_prop = m3d.Transform.pose_vector
+    def _m3d_pose_vector_ndarray(self, _p=_m3d_pv_prop):
+        pv = _p.fget(self)
+        return pv.array if hasattr(pv, "array") else pv
+    m3d.Transform.pose_vector = property(_m3d_pose_vector_ndarray,
+                                         getattr(_m3d_pv_prop, "fset", None),
+                                         getattr(_m3d_pv_prop, "fdel", None))
+    m3d.Transform.get_pose_vector = lambda self: self.pose_vector
+# math3d 4.x prints a stdout deprecation banner (via utils._deprecation_warning,
+# which also runs inspect.stack() on every call) for methods the robot stack
+# still uses, e.g. Vector.dist_squared. During motion this floods the log and
+# adds per-call overhead. Silence it — these are informational only.
+try:
+    import math3d.utils as _m3d_utils
+    _m3d_utils._deprecation_warning = lambda *a, **k: None
+except Exception:
+    pass
 import numpy as np
 import math
 import json
@@ -93,6 +125,8 @@ class UR3(UR_cam_grip):
             #with open('../RobotList/list_of_robots.json') as json_file:
             jsname = 'list_of_robots.json'
             fn = jsname
+            if os.path.exists(os.path.join(module_path, jsname)):
+                fn = os.path.join(module_path, jsname)
             if os.path.exists(os.path.join(current_path, jsname)):
                 fn = os.path.join(current_path, jsname)
             if os.path.exists('RobotList'):
@@ -112,8 +146,8 @@ class UR3(UR_cam_grip):
         super(UR3, self).__init__(IP, package=package, grippertype=grippertype, cameratype=cameratype, use_rtde = use_rtde)
 
         self.name = name
-        self.ini_name = os.path.join(current_path, 'ini', '%s.ini'%name)
-        self._path_ini_name = os.path.join(current_path, 'ini', '%spath.ini'%name)
+        self.ini_name = os.path.join(module_path, 'ini', '%s.ini'%name)
+        self._path_ini_name = os.path.join(module_path, 'ini', '%spath.ini'%name)
         self.isSampleOnStage = False
         self.currentFrame = 0
         self.tweak_reference_axis_angle = None
@@ -179,18 +213,28 @@ class UR3(UR_cam_grip):
 
     def set_current_as_sampledown(self):
         self.samdn_p = self.get_pose()
-        self.pos_samplestage = self.get_xyz().tolist()
+        # Full 6-DOF pose [x,y,z,rx,ry,rz] — the waypoint below indexes [3..5]
+        # for the rotation. get_xyz() returns position only (3 elements), which
+        # made Waypointdown_p[3] raise IndexError.
+        self.pos_samplestage = self.samdn_p.get_pose_vector().tolist()
 #        self.pos_samplestage = self.samdn_p
         Waypointdown_p = self.pos_samplestage
         Waypointup_p = [Waypointdown_p[0],Waypointdown_p[1],Waypointdown_p[2],
                 Waypointdown_p[3],Waypointdown_p[4],Waypointdown_p[5]]
-#        Waypointup_p[2] = Waypointup_p[2] + self.vert_samZ/1000
-        Waypointup_p[2] = self.samup_p.pos.list[2]
+        # Up position = down + vert_samZ (the configured clearance from the ini:
+        # 81.6 mm for the stv/heater config, 30 mm for sav), consistent with
+        # init_waypoints(). Previously this kept the OLD absolute samup Z, so
+        # re-teaching the dropoff silently lost the clearance (e.g. only ~30 mm
+        # above the new down position instead of the full 81.6 mm the heater
+        # needs).
+        Waypointup_p[2] = Waypointdown_p[2] + self.vert_samZ/1000
         self.samup_p = m3d.Transform(Waypointup_p)
 
     def set_current_as_magazinedown(self):
         self.magdn_p = self.get_pose()
-        self.pos_sample1 = self.get_xyz().tolist()
+        # Full 6-DOF pose (see set_current_as_sampledown) — Waypointmagdn_p[3..5]
+        # need the rotation; get_xyz() gave position only -> IndexError.
+        self.pos_sample1 = self.magdn_p.get_pose_vector().tolist()
         print(f"Position of the first sample on Magazine is {self.pos_sample1}.")
         Waypointmagdn_p = self.pos_sample1
         Waypointmagup_p = [Waypointmagdn_p[0],Waypointmagdn_p[1],Waypointmagdn_p[2],
@@ -328,8 +372,26 @@ class UR3(UR_cam_grip):
     def transport_from_sample2_up_to_sample_up(self):
         self.movel(self.samup_p, acc=0.5, vel=1)
 
+    def _samup_clearance_p(self, dy=0.03):
+        """samup_p translated +dy along base-frame Y (default 0.03 m).
+
+        Heater (stv) clearance waypoint: the sample must step laterally clear of
+        the heater bore before/after any vertical move, instead of descending or
+        ascending straight through it at samup_p.
+        """
+        v = self.samup_p.get_pose_vector().tolist()
+        v[1] = v[1] + dy
+        return m3d.Transform(v)
+
     def transport_from_samplestage_up_to_default(self):
-        self.movels([self.samup_p, self.path3, self.path2, self.path1],radius=0.01, acc=0.5, vel=0.5)
+        if getattr(self, 'samZ', '') == 'stv':
+            # Remote-heater (stv / VmotorName=='stv') mode: step +Y 0.03 m clear
+            # of the heater FIRST, then follow the path down to default — do NOT
+            # descend straight from samup_p.
+            self.movel(self._samup_clearance_p(), acc=0.5, vel=0.5)
+            self.movels([self.path3, self.path2, self.path1], radius=0.01, acc=0.5, vel=0.5)
+        else:
+            self.movels([self.samup_p, self.path3, self.path2, self.path1], radius=0.01, acc=0.5, vel=0.5)
         self.movej(self.middl_q, acc=0.5, vel=1)
 
     def transport_from_magazine_up_to_samplestage_up(self):
@@ -338,7 +400,15 @@ class UR3(UR_cam_grip):
 
     def transport_from_default_to_samplestage_up(self):
 #        self.movej(self.middl_q, acc=0.5, vel=0.5)
-        self.movels([self.path1, self.path2, self.path3, self.samup_p],radius=0.01, acc=0.5, vel=0.5)
+        if getattr(self, 'samZ', '') == 'stv':
+            # Remote-heater (stv / VmotorName=='stv') mode: approach samup_p from
+            # the +Y 0.03 m clearance point, then move -Y into samup_p — do NOT
+            # drive straight into the heater.
+            self.movels([self.path1, self.path2, self.path3, self._samup_clearance_p()],
+                        radius=0.01, acc=0.5, vel=0.5)
+            self.movel(self.samup_p, acc=0.5, vel=0.5)
+        else:
+            self.movels([self.path1, self.path2, self.path3, self.samup_p], radius=0.01, acc=0.5, vel=0.5)
 
     def picksample(self):
         if self.currentFrame < 0.0:
@@ -1224,6 +1294,8 @@ class UR5(UR_grip):
             #with open('../RobotList/list_of_robots.json') as json_file:
             jsname = 'list_of_robots.json'
             fn = jsname
+            if os.path.exists(os.path.join(module_path, jsname)):
+                fn = os.path.join(module_path, jsname)
             if os.path.exists(os.path.join(current_path, jsname)):
                 fn = os.path.join(current_path, jsname)
             if os.path.exists('RobotList'):
