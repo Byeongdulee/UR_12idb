@@ -33,8 +33,15 @@ class ParserUtils(object):
                 # data : the data except the header.
             self.logger.debug("We got packet with size %i and type %s" % (psize, ptype))
             if ptype == 16:
-                allData["ClientData"] = self._get_data(pdata, "!iB", ("size", "type"))
-                data = (pdata + data)[5:]  # This is the total size so we resend data to parser
+                if self.version >= (5, 23) and psize == 21:
+                    allData["CumulativeRuntimeData"] = self._get_data(
+                        pdata,
+                        "!iBdd",
+                        ("size", "type", "robotEnergyConsumedWh", "robotBrakingEnergyDissipatedWh"),
+                    )
+                else:
+                    allData["ClientData"] = self._get_data(pdata, "!iB", ("size", "type"))
+                    data = (pdata + data)[5:]  # This is the total size so we resend data to parser
             elif ptype == 0:
                 # this parses RobotModeData for versions >=3.0 (i.e. 3.0)
                 if self.version >= (5, 8):
@@ -82,22 +89,48 @@ class ParserUtils(object):
                     "Dhalpha0","Dhalpha1","Dhalpha2","Dhalpha3","Dhalpha4","Dhalpha5",
                     "calibration_status"))
             elif ptype == 6:
-                allData["ConfigurationData"] = self._get_data(pdata, "!iBdddddddddddd dddddddddddd ddddd dddddd dddddd dddddd dddddd iiii", 
-                ("size", "type", 
-                "jointMinLimit0", "jointMaxLimit0", "jointMinLimit1", "jointMaxLimit1", "jointMinLimit2", "jointMaxLimit2", "jointMinLimit3", "jointMaxLimit3", 
-                "jointMinLimit4", "jointMaxLimit4", "jointMinLimit5", "jointMaxLimit5",
-                "jointMaxSpeed0", "jointMaxAcceleration0","jointMaxSpeed1", "jointMaxAcceleration1","jointMaxSpeed2", "jointMaxAcceleration2","jointMaxSpeed3", "jointMaxAcceleration3",
-                "jointMaxSpeed4", "jointMaxAcceleration4","jointMaxSpeed5", "jointMaxAcceleration5", 
-                "vJointDefault", "aJointDefault", "vToolDefault", "aToolDefault", "eqRadius",
-                "DHa0","DHa1","DHa2","DHa3","DHa4","DHa5",
-                "Dhd0","Dhd1","Dhd2","Dhd3","Dhd4","Dhd5",
-                "DHalpha0","DHalpha1","DHalpha2","DHalpha3","DHalpha4","DHalpha5",
-                "DHtheta0","DHtheta1","DHtheta2","DHtheta3","DHtheta4","DHtheta5",
-                "masterboardVersion", "controllerBoxType", "robotType", "robotSubType"))
+                if self.version >= (5, 26):
+                    fmt = "!iBdddddddddddd dddddddddddd ddddd dddddd dddddd dddddd dddddd iiii hh"
+                    names = (
+                        "size", "type",
+                        "jointMinLimit0", "jointMaxLimit0", "jointMinLimit1", "jointMaxLimit1", "jointMinLimit2", "jointMaxLimit2", "jointMinLimit3", "jointMaxLimit3",
+                        "jointMinLimit4", "jointMaxLimit4", "jointMinLimit5", "jointMaxLimit5",
+                        "jointMaxSpeed0", "jointMaxAcceleration0", "jointMaxSpeed1", "jointMaxAcceleration1", "jointMaxSpeed2", "jointMaxAcceleration2", "jointMaxSpeed3", "jointMaxAcceleration3",
+                        "jointMaxSpeed4", "jointMaxAcceleration4", "jointMaxSpeed5", "jointMaxAcceleration5",
+                        "vJointDefault", "aJointDefault", "vToolDefault", "aToolDefault", "eqRadius",
+                        "DHa0", "DHa1", "DHa2", "DHa3", "DHa4", "DHa5",
+                        "Dhd0", "Dhd1", "Dhd2", "Dhd3", "Dhd4", "Dhd5",
+                        "DHalpha0", "DHalpha1", "DHalpha2", "DHalpha3", "DHalpha4", "DHalpha5",
+                        "DHtheta0", "DHtheta1", "DHtheta2", "DHtheta3", "DHtheta4", "DHtheta5",
+                        "masterboardVersion", "controllerBoxType", "robotType", "robotSubType", "reserved0", "reserved1"
+                    )
+                else:
+                    fmt = "!iBdddddddddddd dddddddddddd ddddd dddddd dddddd dddddd dddddd iiii"
+                    names = (
+                        "size", "type",
+                        "jointMinLimit0", "jointMaxLimit0", "jointMinLimit1", "jointMaxLimit1", "jointMinLimit2", "jointMaxLimit2", "jointMinLimit3", "jointMaxLimit3",
+                        "jointMinLimit4", "jointMaxLimit4", "jointMinLimit5", "jointMaxLimit5",
+                        "jointMaxSpeed0", "jointMaxAcceleration0", "jointMaxSpeed1", "jointMaxAcceleration1", "jointMaxSpeed2", "jointMaxAcceleration2", "jointMaxSpeed3", "jointMaxAcceleration3",
+                        "jointMaxSpeed4", "jointMaxAcceleration4", "jointMaxSpeed5", "jointMaxAcceleration5",
+                        "vJointDefault", "aJointDefault", "vToolDefault", "aToolDefault", "eqRadius",
+                        "DHa0", "DHa1", "DHa2", "DHa3", "DHa4", "DHa5",
+                        "Dhd0", "Dhd1", "Dhd2", "Dhd3", "Dhd4", "Dhd5",
+                        "DHalpha0", "DHalpha1", "DHalpha2", "DHalpha3", "DHalpha4", "DHalpha5",
+                        "DHtheta0", "DHtheta1", "DHtheta2", "DHtheta3", "DHtheta4", "DHtheta5",
+                        "masterboardVersion", "controllerBoxType", "robotType", "robotSubType"
+                    )
+                allData["ConfigurationData"] = self._get_data(pdata, fmt, names)
             elif ptype == 7 and self.version >= (3, 2):
                 allData["ForceModeData"] = self._get_data(pdata, "!iBddddddd", ("size", "type", "x", "y", "z", "rx", "ry", "rz", "robotDexterity"))
             elif ptype == 8 and self.version >= (3, 2):
-                allData["AdditionalInfo"] = self._get_data(pdata, "!iB??", ("size", "type", "teachButtonPressed", "teachButtonEnabled"))
+                if self.version >= (5, 26):
+                    allData["AdditionalInfo"] = self._get_data(
+                        pdata,
+                        "!iBB??B",
+                        ("size", "type", "tpButtonState", "isManualFreedriveAllowed", "isFreedriveIOPressed", "tpType"),
+                    )
+                else:
+                    allData["AdditionalInfo"] = self._get_data(pdata, "!iB??", ("size", "type", "teachButtonPressed", "teachButtonEnabled"))
             elif ptype == 9:
                 continue  # This package has a length of 53 bytes. It is used internally by Universal Robots software only and should be skipped.
             elif ptype == 10: # and self.version >= (3, 2):
@@ -108,14 +141,19 @@ class ParserUtils(object):
                 allData["ToolModeInfo"] = self._get_data(pdata, "!iBBBB", ("size", "type", "outputMode", "output0", "output1"))
             elif ptype == 13 and self.version >= (5, 8):
                 allData["SingularityInfo"] = self._get_data(pdata, "!iBBB", ("size", "type", "singularitySeverity", "singularityType"))
-            elif ptype == 14 and self.version >= (5, 8):
-                self.logger.info("ptype 14 is unknown.")
+            elif ptype in (14, 15, 24):
+                # Payload info and internal data are sent by PolyScope for internal use only.
+                # They should be ignored by clients.
+                continue
             elif ptype == 20:
                 # this is for version 5.8
                 self.logger.info("ptype 20 is read.")
                 tmp = self._get_data(pdata, "!iBQbb", ("size", "type", "timestamp", "source", "robotMessageType"))
                 if tmp["robotMessageType"] == 3:
-                    allData["VersionMessage"] = self._get_data(pdata, "!iBQbbbA BBiiA", ("size", "type", "timestamp", "source", "robotMessageType", "projectNameSize", "projectName", "majorVersion", "minorVersion", "bugfixVersion", "buildNumber", "buildDate"))
+                    try:
+                        allData["VersionMessage"] = self._get_data(pdata, "!iBQbbbA BBiiA", ("size", "type", "timestamp", "source", "robotMessageType", "projectNameSize", "projectName", "majorVersion", "minorVersion", "bugfixVersion", "buildNumber", "buildDate"))
+                    except ParsingException:
+                        allData["VersionMessage"] = self._get_data(pdata, "!iBQbbbA BBA", ("size", "type", "timestamp", "source", "robotMessageType", "projectNameSize", "projectName", "majorVersion", "minorVersion", "buildNumber", "buildDate"))
                     self.version = (allData["VersionMessage"]["majorVersion"], allData["VersionMessage"]["minorVersion"]) 
                     return allData  # version info is only at the first packet.
                 if self.version < (5, 8):
@@ -128,44 +166,88 @@ class ParserUtils(object):
                     elif tmp["robotMessageType"] == 2:
                         allData["popupMessage"] = self._get_data(pdata, "!iBQbb ??BAcAc", ("size", "type", "timestamp", "source", "robotMessageType", "warning", "error", "titleSize", "messageTitle", "messageText"))
                     elif tmp["robotMessageType"] == 0:
-                        allData["messageText"] = self._get_data(pdata, "!iBQbb Ac", ("size", "type", "timestamp", "source", "robotMessageType", "messageText"))
+                        allData["messageText"] = self._get_data(
+                            pdata,
+                            "!iBQbbA",
+                            ("size", "type", "timestamp", "source", "robotMessageType", "messageText"),
+                        )
                     elif tmp["robotMessageType"] == 8:
                         allData["varMessage"] = self._get_data(pdata, "!iBQbb iiBAcAc", ("size", "type", "timestamp", "source", "robotMessageType", "code", "argument", "titleSize", "messageTitle", "messageText"))
                     elif tmp["robotMessageType"] == 7:
                         allData["keyMessage"] = self._get_data(pdata, "!iBQbb iiBAcAc", ("size", "type", "timestamp", "source", "robotMessageType", "code", "argument", "titleSize", "messageTitle", "messageText"))
                     elif tmp["robotMessageType"] == 5:
                         allData["keyMessage"] = self._get_data(pdata, "!iBQbb iiAc", ("size", "type", "timestamp", "source", "robotMessageType", "code", "argument", "messageText"))
+                    elif tmp["robotMessageType"] == 10:
+                        allData["runtimeExceptionMessage"] = self._get_data(
+                            pdata,
+                            "!iBQbbIIA",
+                            ("size", "type", "timestamp", "source", "robotMessageType", "scriptLineNumber", "scriptColumnNumber", "runtimeExceptionTextMessage"),
+                        )
                     else:
                         self.logger.debug("Message type parser not implemented %s", tmp)
                 else:
                     # if tmp["robotMessageType"] == 3:
                     #     allData["VersionMessage"] = self._get_data(pdata, "!iBQbbbA BBiiA", ("size", "type", "timestamp", "source", "robotMessageType", "projectNameSize", "projectName", "majorVersion", "minorVersion", "bugfixVersion", "buildNumber", "buildDate"))
                     if tmp["robotMessageType"] == 6:
-                        allData["robotCommMessage"] = self._get_data(pdata, "!iBQbbiiiLLA", ("size", "type", "timestamp", "source", "robotMessageType", "code", "argument", "level", "datatype", "data", "messageText"))
+                        try:
+                            allData["robotCommMessage"] = self._get_data(pdata, "!iBQbbiiiIIA", ("size", "type", "timestamp", "source", "robotMessageType", "code", "argument", "level", "datatype", "data", "messageText"))
+                        except ParsingException:
+                            allData["robotCommMessage"] = self._get_data(pdata, "!iBQbbA", ("size", "type", "timestamp", "source", "robotMessageType", "messageText"))
+                    elif tmp["robotMessageType"] == 1:
+                        allData["labelMessage"] = self._get_data(pdata, "!iBQbbiA", ("size", "type", "timestamp", "source", "robotMessageType", "id", "messageText"))
                     elif tmp["robotMessageType"] == 2:
                         allData["popupMessage"] = self._get_data(pdata, "!iBQbbIB???HA A", ("size", "type", "timestamp", "source", "robotMessageType", "id", "type", "warning", "error", "blocking", "titleSize", "messageTitle", "messageText"))
                     elif tmp["robotMessageType"] == 0:
-                        allData["messageText"] = self._get_data(pdata, "!iBQbbbA", ("size", "type", "timestamp", "source", "robotMessageType", "messageText"))
+                        allData["messageText"] = self._get_data(
+                            pdata,
+                            "!iBQbbA",
+                            ("size", "type", "timestamp", "source", "robotMessageType", "messageText"),
+                        )
+                    elif tmp["robotMessageType"] == 8:
+                        allData["varMessage"] = self._get_data(
+                            pdata,
+                            "!iBQbbiiHA A",
+                            ("size", "type", "timestamp", "source", "robotMessageType", "code", "argument", "titleSize", "messageTitle", "messageText"),
+                        )
                     elif tmp["robotMessageType"] == 7:
                         allData["keyMessage"] = self._get_data(pdata, "!iBQbbiiHA A", ("size", "type", "timestamp", "source", "robotMessageType", "code", "argument", "titleSize", "messageTitle", "messageText"))
                     elif tmp["robotMessageType"] == 5:
                         allData["SafetyMessage"] = self._get_data(pdata, "!iBQbbiiBII", ("size", "type", "timestamp", "source", "robotMessageType", "code", "argument", "Modetype", "Datatype", "Data"))
+                    elif tmp["robotMessageType"] == 10:
+                        allData["runtimeExceptionMessage"] = self._get_data(
+                            pdata,
+                            "!iBQbbIIA",
+                            ("size", "type", "timestamp", "source", "robotMessageType", "scriptLineNumber", "scriptColumnNumber", "runtimeExceptionTextMessage"),
+                        )
                     else:
                         print(tmp["robotMessageType"], "messagetype is not impremetned yet.")
                         self.logger.debug("Message type parser not implemented %s", tmp)
             elif ptype == 25:
-                tmp = self._get_data(pdata, "!iBQbb", ("size", "type", "timestamp", "source", "robotMessageType"))
+                try:
+                    tmp = self._get_data(pdata, "!iBQbb", ("size", "type", "timestamp", "source", "robotMessageType"))
+                except ParsingException:
+                    self.logger.debug("Packet type 25 had an incomplete header; skipping it")
+                    continue
+
                 self.logger.info("ptype 25 is read.")
                 if tmp["robotMessageType"] == 2:
-                    allData["varMessage"] = self._get_data(pdata, "!iBQbHA A", ("size", "type", "timestamp", "robotMessageType","titleSize", "messageTitle", "messageText"))
+                    try:
+                        allData["varMessage"] = self._get_data(pdata, "!iBQbHA A", ("size", "type", "timestamp", "robotMessageType", "titleSize", "messageTitle", "messageText"))
+                    except ParsingException:
+                        self.logger.debug("Packet type 25 variable-message payload was shorter than expected")
                 if tmp["robotMessageType"] == 0:
-                    allData["globalVariablesSetupMessage"] = self._get_data(pdata, "!iBQbIA", ("size", "type", "timestamp", "robotMessageType","startIndex", "variableNames"))
+                    try:
+                        allData["globalVariablesSetupMessage"] = self._get_data(pdata, "!iBQbIA", ("size", "type", "timestamp", "robotMessageType", "startIndex", "variableNames"))
+                    except ParsingException:
+                        self.logger.debug("Packet type 25 global-variable setup payload was shorter than expected")
                 if tmp["robotMessageType"] == 1:
-                    allData["globalVariablesUpdateMessage"] = self._get_data(pdata, "!iBQbIA", ("size", "type", "timestamp", "robotMessageType","startIndex", "variableValues"))
+                    try:
+                        allData["globalVariablesUpdateMessage"] = self._get_data(pdata, "!iBQbIA", ("size", "type", "timestamp", "robotMessageType", "startIndex", "variableValues"))
+                    except ParsingException:
+                        self.logger.debug("Packet type 25 global-variable update payload was shorter than expected")
                 # Each variable value contains type byte, data, and terminating new line character (\n character). Example - two variables of type BOOL(True), and STRING("aaaa"): 0c 01 0a 03 00 04 61 61 61 61 0a
             else:
-                print("Unknown packet type %s with size %s" %(ptype, psize))
-                #self.logger.debug("Unknown packet type %s with size %s", ptype, psize)
+                self.logger.debug("Unknown packet type %s with size %s", ptype, psize)
         return allData
 
     def _get_data(self, data, fmt, names):
