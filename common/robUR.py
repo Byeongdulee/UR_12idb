@@ -1,5 +1,5 @@
 ''' This program is to define UR robot with Robotiq gripper and camera '''
-#import time
+import time
 from PyQt5.QtCore import QObject
 
 import numpy as np
@@ -13,6 +13,16 @@ sys.path.append('..')
 from common.urdashboard import dashboard
 from common.urcamera import camera
 from urxe import ursecmon
+# AprilTag / camera-tools helpers used by the camera methods below
+# (tilt_align, orient2aprilTag, _center_aprilTag). Wrapped in try/except
+# because camera_tools pulls in optional deps (cv2, pupil_apriltags) and may
+# not be importable in every environment.
+try:
+    from common.urcamera import Detection as atDET
+    from common.urcamera import cal_AT2pose
+    import camera_tools as cameratools
+except:
+    pass
 text_file_path = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(text_file_path, '..', 'urscripts', 'checkdistance.script'), 'r') as file:
     CheckdistanceScript = file.read()
@@ -133,8 +143,11 @@ class UR(QObject):
         except TimeoutError:
             raise RobotException(f'Robot {IP} does not respond.')
         except ursecmon.ProtectiveStopException:
-            print("Protective stoppped.. Connecting again.")
-            self.robot = Robot(IP,use_rtde=use_rtde)
+            # Robot is in protective stop. Release it through the dashboard
+            # server (port 29999, independent of the secondary monitor) and
+            # reconnect instead of aborting.
+            print("Protective stopped.. Unlocking protective stop.")
+            self.robot = self._recover_protective_stop(IP, Robot, use_rtde)
 
         if cameratype==2:
             self.camera = camera(IP='')
@@ -159,6 +172,36 @@ class UR(QObject):
         except:
             pass
         self.dashboard = dashboard(self.robot)
+
+    def _recover_protective_stop(self, IP, Robot, use_rtde, attempts=3):
+        # UR will not release a protective stop until >=5 s after it triggered,
+        # and the stop can reassert, so unlock + reconnect must be retried.
+        for attempt in range(1, attempts + 1):
+            # Wait out the controller's mandatory hold-off before unlocking.
+            time.sleep(6)
+            try:
+                db = dashboard(IP)
+                if db.unlock():
+                    print("Protective stop releasing... waiting for robot.")
+                else:
+                    print("Dashboard did not confirm release; retrying anyway.")
+                # Poll until the safety status leaves PROTECTIVE_STOP.
+                for _ in range(10):
+                    time.sleep(1)
+                    status = db.get_status()
+                    if status and 'PROTECTIVE_STOP' not in str(status).upper():
+                        break
+            except Exception as ex:
+                print(f"Failed to unlock protective stop via dashboard: {ex}")
+            print(f"Connecting again (attempt {attempt}/{attempts}).")
+            try:
+                return Robot(IP, use_rtde=use_rtde)
+            except ursecmon.ProtectiveStopException:
+                if attempt == attempts:
+                    raise
+                print("Still protective stopped; retrying.")
+        # Should not reach here; loop either returns or raises.
+        raise RobotException(f'Could not clear protective stop on {IP}.')
 
     def terminate(self):
         self.robot.close()
@@ -387,17 +430,17 @@ class UR(QObject):
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
     def move2rx(self, val, acc=0.5, vel=0.5, wait=True):
-        v = self.get_xyz().tolist()
+        v = list(self.get_pose().get_pose_vector())
         v[3] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
     def move2ry(self, val, acc=0.5, vel=0.5, wait=True):
-        v = self.get_xyz().tolist()
+        v = list(self.get_pose().get_pose_vector())
         v[4] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
     def move2rz(self, val, acc=0.5, vel=0.5, wait=True):
-        v = self.get_xyz().tolist()
+        v = list(self.get_pose().get_pose_vector())
         v[5] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
@@ -415,7 +458,10 @@ class UR(QObject):
     def moveto(self, position, command="movel", acc=0.5, vel=0.5, wait=True):
         if type(position) == list or np.ndarray:
             if len(position) == 3:
-                v = self.get_xyz().tolist()
+                # get_xyz() is position only (3 elements); the current
+                # orientation comes from the full pose vector (6 elements).
+                v = list(self.get_pose().get_pose_vector())
+                position = list(position)
                 position.append(v[3])
                 position.append(v[4])
                 position.append(v[5])
@@ -655,6 +701,38 @@ class UR_grip(UR):
             raise NoFingerException('No gripper defined.')
         self.gripper.gripper_action(190)
 
+    def unlock_protective_stop(self, wait=12):
+        """Release a protective stop via the dashboard and wait for the safety
+        status to leave PROTECTIVE_STOP. Returns True if it cleared."""
+        try:
+            # UR enforces a >=5 s hold-off before a protective stop can be
+            # released, so wait before issuing the unlock.
+            time.sleep(6)
+            if self.dashboard.unlock():
+                print("Protective stop releasing... waiting for robot.")
+            else:
+                print("Dashboard did not confirm release; waiting anyway.")
+            for _ in range(wait):
+                time.sleep(1)
+                status = self.dashboard.get_status()
+                if status and 'PROTECTIVE_STOP' not in str(status).upper():
+                    return True
+        except Exception as ex:
+            print(f"Failed to unlock protective stop via dashboard: {ex}")
+        return False
+
+    def release_after_unlock(self):
+        """Clear a protective stop (if the robot is in one) and then open the
+        gripper. Gripper commands run as URScript on the controller, which does
+        not execute while protective stopped, so the stop must be cleared
+        first."""
+        if not hasattr(self, 'gripper'):
+            raise NoFingerException('No gripper defined.')
+        if self.get_safety_mode() > 2:
+            if not self.unlock_protective_stop():
+                print("Protective stop did not clear; gripper release may not run.")
+        self.release()
+
 # This class add advanced methods to the UR_cam_grip class.
 # for example, combining camera, dashboard, and robot motion all together.
 
@@ -763,15 +841,9 @@ class UR_cam_grip(UR_grip):
 
         return self.tilt_over(distance=distance, ang = ang, dir=[-1, 0])
 
-    def camera_face_down(self):
-        if not hasattr(self, 'camera'):
-            raise NoCameraException('No camera defined.')
-        if self.is_Z_aligned():
-            return self.rotx(30, coordinate='camera')
-
-    def camera_face_back(self):
+    def camera_face_back(self, coordinate='tcp'):
         if self.is_camera_facedown():
-            return self.rotx(-30, coordinate='camera')
+            return self.rotx(-30, coordinate=coordinate)
 
     def move_over_camera(self, distance, acc=0.5, vel=0.5):
         if not hasattr(self, 'camera'):
@@ -810,38 +882,6 @@ class UR_cam_grip(UR_grip):
         #cameravector_north[1] = b2
         #cameravector_north[2] = c2
         return cameravector, cameravector_north, -cameravector_east
-
-    def move_toward_camera(self, distance, north=0.0, east=0.0, acc=0.5, vel=0.5):
-        if not hasattr(self, 'camera'):
-            raise NoCameraException('No camera defined.')
-        # north is the vertical direction on the camera image.
-        # east is the right direction on the camera image.
-        # When distance is 0, the TCP moves on the normal plane to the camera vector.
-        cameravector, northv, eastv = self.get_camera_vector()
-        cameravector = cameravector*distance
-        cameravector = cameravector + east*eastv + north*northv
-        rotv = self.get_xyz().tolist()
-        v = [rotv[0]+cameravector[0],rotv[1]+cameravector[1],rotv[2]+cameravector[2],rotv[3],rotv[4],rotv[5]]
-#        self.moveto(v, acc=acc, vel=vel)
-        
-        np = m3d.Transform(v)
-        #self.robot.movej(np, acc=acc, vel=vel)
-        self.set_pose(np, acc=acc, vel=vel, wait=True, command="movej", threshold=None)
-
-    def roll_around_camera(self, val, distance, dir='y'):
-        if not hasattr(self, 'camera'):
-            raise NoCameraException('No camera defined.')
-        newtcp = []
-        for v in self.camtcp:
-            newtcp.append(v)
-        newtcp[2] = distance
-        self.set_tcp(newtcp)
-        v = self.get_pose().orient
-        if dir=='y':
-            self.roty(val, coordinate='tcp', acc=0.5, vel=0.5)
-        else:
-            self.rotx(val, coordinate='tcp', acc=0.5, vel=0.5)
-        self.set_tcp(self.tcp)
 
     def camera_y(self):
         if not hasattr(self, 'camera'):
@@ -924,14 +964,6 @@ class UR_cam_grip(UR_grip):
 
         self.movel(np0, acc=0.5, vel=0.5)
 
-    def rotate_around_Zaxis_camera(self, ang):
-        if not hasattr(self, 'camera'):
-            raise NoCameraException('No camera defined.')
-        # rotate around the camera axis, degree input.
-        self.set_tcp(self.camtcp)
-        self.rotz(ang)
-        self.set_tcp(self.tcp)
-
     def get_inplane_angle_from_idealZ(self):
         t = self.get_pose()
         zv = t.orient.get_vec_z()
@@ -939,44 +971,200 @@ class UR_cam_grip(UR_grip):
         return ang
 
     # putting the tooltip to the current camera position
-    def grippertip2camera(self):
+    def grippertip2camera(self, restore_tcp=True, acc=0.1, vel=0.2):
+        # Move the gripper tip to the pose the camera currently occupies
+        # (camera position + orientation, in the base frame).
         if not hasattr(self, 'camera'):
             raise NoCameraException('No camera defined.')
-        self.prev_tcp = self.get_tcp()
+        self.prev_tcp = self.get_tcp()   # remembered for TweakRobot.goback()
         self.set_tcp(self.camtcp)
-        pose = self.get_pose()
+        pose = self.get_pose()           # camera pose in base frame
         self.set_tcp(self.tcp)
-        self.set_pose(pose, vel=0.2, acc=0.1)
-        self.set_tcp(self.prev_tcp)
+        self.set_pose(pose, acc=acc, vel=vel, wait=True)
+        # restore_tcp=True leaves the active TCP as it was before the call
+        # (gripper frame); restore_tcp=False leaves the camera TCP active.
+        self.set_tcp(self.prev_tcp if restore_tcp else self.camtcp)
 
     # putting the camera to the current tooltip position
-    def camera2grippertip(self):
+    def camera2grippertip(self, restore_tcp=True, acc=0.1, vel=0.2):
+        # Move the camera to the pose the gripper tip currently occupies
+        # (gripper position + orientation, in the base frame).
         if not hasattr(self, 'camera'):
             raise NoCameraException('No camera defined.')
-        self.prev_tcp = self.get_tcp()
+        self.prev_tcp = self.get_tcp()   # remembered for TweakRobot.goback()
         self.set_tcp(self.tcp)
-        pose = self.get_pose()
+        pose = self.get_pose()           # gripper pose in base frame
         self.set_tcp(self.camtcp)
-        self.set_pose(pose, vel=0.2, acc=0.1)
-        self.set_tcp(self.prev_tcp)
-    
-    # special case of grippertip2camera. This is to make the gripper tip face down.
+        self.set_pose(pose, acc=acc, vel=vel, wait=True)
+        # restore_tcp=True leaves the active TCP as it was before the call;
+        # restore_tcp=False leaves the gripper TCP active.
+        self.set_tcp(self.prev_tcp if restore_tcp else self.tcp)
+
+    # special case of grippertip2camera: same motion, but leaves the camera
+    # TCP active (used to make the gripper tip face down).
     def put_tcp2camera(self):
-        if not hasattr(self, 'camera'):
-            raise NoCameraException('No camera defined.')
-        self.set_tcp(self.camtcp)
-        pos = self.get_pos()
-        self.set_tcp(self.tcp)
-        self.tilt_back()
-        self.set_pos(pos, acc=0.1, vel=0.1)
+        self.grippertip2camera(restore_tcp=False, acc=0.1, vel=0.1)
 
-    # special case of camera2grippertip. This is to make the camera face down.
+    # special case of camera2grippertip: same motion, but leaves the gripper
+    # TCP active (used to make the camera face down).
     def put_camera2tcp(self):
+        self.camera2grippertip(restore_tcp=False, acc=0.1, vel=0.1)
+
+    def camera_face_down(self):
         if not hasattr(self, 'camera'):
-            raise NoCameraException('No camera defined.')
-        pos = self.get_pos()
-        self.tilt_camera_down()
+            raise Exception('No camera defined.')
         self.set_tcp(self.camtcp)
-        self.set_pos(pos, acc=0.1, vel=0.1)
+        self.set_orientation()
+        #if self.is_Z_aligned():
+        #    return self.rotx(30, coordinate='camera')
+
+    def tilt_align(self):
+        if b'Follow me' in self.camera.QRdata:
+            h, pd, ang, tilt = cameratools.decodefollowme(self)
+            tilt = np.array(tilt)
+            #height = 0.3796914766079877
+            print(f"'Follow me' is found at {h}m below.")
+            while not (tilt[0] ==0 and tilt[1]==0):
+                North = tilt[0]
+                East = tilt[1]
+                signN = np.sign(tilt[0])
+                signE = np.sign(tilt[1])
+                if North != 0:
+                    self.tilt_over(h, ang=signN*5, dir = [1, 0])
+                if East != 0:
+                    self.tilt_over(h, ang=signE*5, dir = [0, 1])
+                h, pd, ang, tilt = cameratools.decodefollowme(self)
+                while h==0:
+                    h, pd, ang, tilt = cameratools.decodefollowme(self)
+                tilt = np.array(tilt)
+
+    def relocate_camera(self, distance2go = 0.2):
+        # Locate camera at the shortest distance between the objec and base.
+        # align Z
+        # set camera position 0.2m away from the obj
+        obj_pos, campos = self.get_obj_position_from_camera_center(distance2go)
+        #if not isinstance(orient, m3d.Orientation):
+        orient = m3d.Orientation([0, -math.pi, 0]) # make camera point +y axis.
+        #orient.rotate_zb(math.pi/2) # make camera point +x
+        trans = self.get_pose()
+        trans.orient = orient
+        trans.orient.rotate_zb(math.atan2(obj_pos[1], obj_pos[0])-math.pi/2)
+        newpos = (obj_pos.length-0.2)/obj_pos.length*obj_pos
+        trans.set_pos(newpos)
+        self.set_pose(trans, acc=0.1, vel=0.1)
+
+    def get_obj_position_from_camera_center(self, distance2go):
+        # calculate the object position that is at the center of camera image and QRrefdistance away from the camera surface.
+        cameravector, v1, v2 = self.get_camera_vector()
+        campos = self.get_camera_position()
+        pos = campos.pos + distance2go*cameravector/cameravector.length
+        return pos, campos
+        # Camera-relative motion helpers (copied from common.robUR) — present on UR3
+        # Added here so UR5 instances expose the same API expected by camera_tools.
+    
+    def move_toward_camera(self, distance, north=0.0, east=0.0, acc=0.5, vel=0.5):
+        if not hasattr(self, 'camera'):
+            raise Exception('No camera defined.')
+        cameravector, northv, eastv = self.get_camera_vector()
+        cameravector = cameravector * distance
+        cameravector = cameravector + east * eastv + north * northv
+        # get_xyz() is position only (3 elements); the orientation comes from
+        # the full pose vector (6 elements), so read that to avoid IndexError.
+        rotv = list(self.get_pose().get_pose_vector())
+        v = [rotv[0] + cameravector[0], rotv[1] + cameravector[1], rotv[2] + cameravector[2], rotv[3], rotv[4], rotv[5]]
+        np_trans = m3d.Transform(v)
+        self.set_pose(np_trans, acc=acc, vel=vel, wait=True, command="movej", threshold=None)
+
+    def roll_around_camera(self, val, distance, dir='y'):
+        if not hasattr(self, 'camera'):
+            raise Exception('No camera defined.')
+        newtcp = list(self.camtcp)
+        newtcp[2] = distance
+        self.set_tcp(newtcp)
+        if dir == 'y':
+            self.roty(val, coordinate='tcp', acc=0.5, vel=0.5)
+        else:
+            self.rotx(val, coordinate='tcp', acc=0.5, vel=0.5)
         self.set_tcp(self.tcp)
 
+    def rotate_around_Zaxis_camera(self, ang):
+        if not hasattr(self, 'camera'):
+            raise Exception('No camera defined.')
+        self.set_tcp(self.camtcp)
+        self.rotz(ang)
+        self.set_tcp(self.tcp)
+
+## April tag functions
+    def orient2aprilTag(self):
+        self.camera.capture()
+        r = self.camera.decodeAT()
+        #if not hasattr(self.camera, 'decoded'):
+        #    return False
+        #r = self.camera.decoded
+        if not isinstance(r, atDET):
+            print("No aprilTag in the camera. Capture it and try again.")
+            return False
+        euler, t, pos = cal_AT2pose(r)
+        distance = self.camera.getATdistance(r)
+        self.move_toward_camera(distance=0, north=-t[1][0], east=t[0][0], acc=0.1, vel=0.2)
+        self.roll_around_camera(-euler[0], distance,'x')
+        self.roll_around_camera(-euler[1], distance,'y')
+        self.set_tcp(self.camtcp)
+        self.rotz(euler[2], acc=0.1, vel=0.2)
+        return True
+
+    def _center_aprilTag(self, tol=0.05, max_iter=4):
+        # Iteratively re-center the aprilTag under the camera. After each move
+        # the image is recaptured and the pixel offset recomputed; the loop
+        # stops once the tag center is within default_tolerance (a fraction of
+        # the image size, i.e. 5% by default) of the image center, or after
+        # max_iter moves.
+        if not hasattr(self.camera, 'image'):
+            return False
+        r = self.camera.decoded
+        if not isinstance(r, atDET):
+            print("No aprilTag in the camera. Capture it and try again.")
+            return False
+        for _ in range(max_iter):
+            #euler, t, pos = cal_AT2pose(r)
+            h, w, _ = self.camera.image.shape
+            QRpos = r.center
+            QRdist = self.camera.getATdistance(r)
+            dx = w/2-QRpos[0]
+            dy = h/2-QRpos[1]
+            # converged once the tag sits within tolerance of the image center
+            if abs(dx) <= tol*w and abs(dy) <= tol*h:
+                return True
+            dX = -dx/self.camera.camera_f*QRdist
+            dY = dy/self.camera.camera_f*QRdist
+            self.move_toward_camera(distance=0, north=dY, east=dX, acc=0.01, vel=0.01)
+            # recapture and re-decode to measure the new offset
+            cnt = 0
+            while cnt < 5:
+                self.camera.capture()
+                r = self.camera.decodeAT()
+                if isinstance(r, atDET):
+                    break
+                cnt += 1
+                time.sleep(0.5)
+            if cnt == 5:
+                print("Lost the aprilTag after moving.")
+                return False
+        print("aprilTag centering did not converge within max_iter iterations.")
+        return False
+    
+    def center_camera2apriltag(self, tol=0.01, max_iter=4):
+        max_trialN = 10
+        trial = 0
+        done = False
+        while trial<max_trialN:
+            img = self.camera.capture()
+            r = self.camera.decodeAT()
+            if isinstance(r, atDET):
+                done = True
+                break
+        if done:
+            self._center_aprilTag(tol=tol, max_iter=max_iter)
+            return done
+        print(f"Cannot find an april tag in the camera feed.")
+        return False      

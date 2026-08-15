@@ -31,7 +31,8 @@ default_imgH = 1280
 default_imgV = 720
 focus_threshold = 510
 QRsavSize = 0.023 # 1QR 'sav' size = ~23mm (about 1mm error)
-AT_size = 0.021
+#AT_size = 0.021
+AT_size = 0.010
 # dx = dX/Z*f
 # dx: change in pixels on camera.
 # dX: change of the position of an object (or the robot arm carrying the camera) (m)
@@ -78,7 +79,7 @@ def cal_AT2pose(r):
     r2 = Rotation.from_matrix(r.pose_R)
     euler = r2.as_euler('xyz', degrees = True)
     R = Rotation.from_euler('zyx', [euler[2], -euler[1], -euler[0]], degrees=True)
-    print(f"Euler angles : {euler} degrees")
+    #print(f"Euler angles : {euler} degrees")
     p.orient = m3d.Orientation(R.as_matrix())
     #p.pos =np.array([r.pose_t[0][0],r.pose_t[1][0],0])
     return euler, r.pose_t, p

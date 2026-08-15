@@ -78,13 +78,6 @@ from copy import deepcopy
 from common.robUR import UR_grip
 from common.robUR import UR_cam_grip
 
-try:
-    from common.urcamera import Detection as atDET
-    from common.urcamera import cal_AT2pose
-    import camera_tools as cameratools
-except:
-    pass
-
 from common import utils
 from common.tc_pipet import pipet
 ## Beamline specific variables
@@ -1013,111 +1006,6 @@ class UR3(UR_cam_grip):
                     break
         print("QR code is centered.")
 
-    def tilt_align(self):
-        if b'Follow me' in self.camera.QRdata:
-            h, pd, ang, tilt = cameratools.decodefollowme(self)
-            tilt = np.array(tilt)
-            #height = 0.3796914766079877
-            print(f"'Follow me' is found at {h}m below.")
-            while not (tilt[0] ==0 and tilt[1]==0):
-                North = tilt[0]
-                East = tilt[1]
-                signN = np.sign(tilt[0])
-                signE = np.sign(tilt[1])
-                if North != 0:
-                    self.tilt_over(h, ang=signN*5, dir = [1, 0])
-                if East != 0:
-                    self.tilt_over(h, ang=signE*5, dir = [0, 1])
-                h, pd, ang, tilt = cameratools.decodefollowme(self)
-                while h==0:
-                    h, pd, ang, tilt = cameratools.decodefollowme(self)
-                tilt = np.array(tilt)
-
-    def relocate_camera(self, distance2go = 0.2):
-        # Locate camera at the shortest distance between the objec and base.
-        # align Z
-        # set camera position 0.2m away from the obj
-        obj_pos, campos = self.get_obj_position_from_camera_center(distance2go)
-        #if not isinstance(orient, m3d.Orientation):
-        orient = m3d.Orientation([0, -math.pi, 0]) # make camera point +y axis.
-        #orient.rotate_zb(math.pi/2) # make camera point +x
-        trans = self.get_pose()
-        trans.orient = orient
-        trans.orient.rotate_zb(math.atan2(obj_pos[1], obj_pos[0])-math.pi/2)
-        newpos = (obj_pos.length-0.2)/obj_pos.length*obj_pos
-        trans.set_pos(newpos)
-        self.set_pose(trans, acc=0.1, vel=0.1)
-
-    def get_obj_position_from_camera_center(self, distance2go):
-        # calculate the object position that is at the center of camera image and QRrefdistance away from the camera surface.
-        cameravector, v1, v2 = self.get_camera_vector()
-        campos = self.get_camera_position()
-        pos = campos.pos + distance2go*cameravector/cameravector.length
-        return pos, campos
-
-## April tag functions
-    def orient2aprilTag(self):
-        if not hasattr(self.camera, 'decoded'):
-            return False
-        r = self.camera.decoded
-        if not isinstance(r, atDET):
-            print("No aprilTag in the camera. Capture it and try again.")
-            return
-        euler, t, pos = cal_AT2pose(r)
-
-        self.move_toward_camera(distance=0, north=-t[1][0], east=t[0][0], acc=0.1, vel=0.2)
-
-        p = self.get_pose()
-        self.prev_pose = p.copy()
-        self.prev_tcp = self.get_tcp()
-
-        p.orient.rotate_zt(euler[2]/180*math.pi)
-        p.orient.rotate_yt(-euler[1]/180*math.pi)
-        p.orient.rotate_xt(-euler[0]/180*math.pi)
-        #print(p)
-        self.set_pose(p, wait=True, acc=0.1, vel=0.2, command="movej")
-
-
-# #        self.mvr2xTCP(-t[0])
-# #        self.mvr2zTCP(-t[1])
-#         self.set_tcp(self.tcp)
-        return euler, t, p
-
-    def center_aprilTag(self):
-        if not hasattr(self.camera, 'image'):
-            return False
-        r = self.camera.decoded
-        if not isinstance(r, atDET):
-            print("No aprilTag in the camera. Capture it and try again.")
-            return False
-        #euler, t, pos = cal_AT2pose(r)
-        h, w, _ = self.camera.image.shape
-        QRpos = r.center
-        QRdist = self.camera.getATdistance(r)
-        dx = w/2-QRpos[0]
-        dy = h/2-QRpos[1]
-        dX = -dx/self.camera.camera_f*QRdist
-        dY = dy/self.camera.camera_f*QRdist
-        self.move_toward_camera(distance=0, north=dY, east=dX, acc=0.5, vel=0.5)
-        return True
-    
-    def center_camera2apriltag(self):
-        max_trialN = 10
-        trial = 0
-        done = False
-        while trial<max_trialN:
-            img = self.camera.capture()
-            r = self.camera.decodeAT()
-            if isinstance(r, atDET):
-                done = True
-                break
-        if done:
-            self.center_aprilTag()
-            return done
-        print(f"Cannot find an april tag in the camera feed.")
-        return False        
-
-
 def auto_align_12idb_remote_heater(rob):
     
     dist2ATtag = 0.3
@@ -1261,7 +1149,7 @@ def auto_align_12idb_standard_holder2(rob):
     print(f"The TCP is from {h}m above a surface.")
     
 # This is for UR5 robot at 12-ID-C.
-class UR5(UR_grip):
+class UR5(UR_cam_grip):
     # unit of position vector : meter.
     sigGripper = pyqtSignal(str)
     sigMoving = pyqtSignal(bool)
@@ -1269,6 +1157,7 @@ class UR5(UR_grip):
     sigObject_ongripper = pyqtSignal(bool)
     sigRobotCommand = pyqtSignal(str)
     sigRobotPosition = pyqtSignal(numpy.ndarray)
+    toolchanger_length = 0.045
 
     Waypoint_tool3_p = [-0.71556695,  0.00796828,  0.209, -2.18919547,  2.23820588, -0.00663184]
     Waypoint_pipet_p = [-0.59889272,  0.00900487,  0.208, -2.18934897,  2.23850674, -0.00610946]
@@ -1279,9 +1168,9 @@ class UR5(UR_grip):
 
     _TCP2CAMdistance = 0.12
 #    tcp = [0.0,0.0,0.167,0.0,0.0,0.0]
-    tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
+    tcp = [0.0,0.0,0.15+toolchanger_length,0.0,0.0,0.0]
 #    camtcp = [-0.001, 0.04, 0.015, -math.pi/180*30, 0, 0]
-    camtcp = [0, 0.0433, 0.015, -math.pi/180*30, 0, 0]
+    camtcp = [0, 0.0433, 0.015+toolchanger_length, -math.pi/180*30, 0, 0]
 
     def __init__(self, name = 'UR5', package=ROBOT_PYTHON_PACKAGE, grippertype=1, cameratype=1):
 # definition of Cartesian Axis of UR3 at 12idb.
@@ -1471,4 +1360,4 @@ class UR5(UR_grip):
         self.movel(pos_to)
         self.release()
         self.movels([above_target, pos1], acc=0.1, vel=0.1)
-        self.home()       
+        self.home()    

@@ -3,7 +3,12 @@
     "allow": [
       "Read(//tmp/**)",
       "Bash(python -c \"import sys; sys.path.insert\\(0,'/home/beams15/S12IDB/python_codes/UR_12idb'\\); import robot12idb; print\\('import OK; module_path =', robot12idb.module_path\\)\")",
-      "Bash(pip show *)"
+      "Bash(pip show *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('common/robUR.py'\\).read\\(\\)\\); ast.parse\\(open\\('robot12idb.py'\\).read\\(\\)\\); print\\('OK: both parse'\\)\")",
+      "Read(//c/Users/s12idc/Documents/GitHub/**)",
+      "Bash(python -c \"import urx, inspect; print\\(inspect.signature\\(urx.Robot.set_pose\\)\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('common/robUR.py'\\).read\\(\\)\\); print\\('OK: robUR.py parses'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('common/robUR.py'\\).read\\(\\)\\); print\\('OK'\\)\")"
     ]
   }
 }

@@ -6,9 +6,13 @@ import time
 import numpy as np
 #from imutils import paths
 import cv2
-from common.urcamera import decodeQR, showQRcode
+from common.urcamera import decodeQR, showQRcode, default_imgH, default_imgV, focus_threshold, camera_f
+from common.urcamera import decodeAT, cal_AT2pose
+from common.urcamera import camera
 from threading import Thread
 from pupil_apriltags import Detector
+import json
+import os
 
 pos_sam = [-4.60838969e-01, -5.05650395e-01,  2.31693123e-01,  2.28368253e+00,
        -2.15707100e+00,  1.01565770e-03]
@@ -205,6 +209,11 @@ def followhands(rob):
     
         # Capture
         ret, frame = rob.camera.capture()
+        # Ensure frame is a writable NumPy array for OpenCV drawing functions.
+        if not isinstance(frame, np.ndarray):
+            frame = np.array(frame)
+        if not getattr(frame, "flags", None) or not frame.flags.writeable:
+            frame = frame.copy()
         
         gray = cv2.cvtColor(cv2.flip(frame,0), cv2.COLOR_BGR2GRAY)
         #fm = variance_of_laplacian(gray)
@@ -287,22 +296,29 @@ def followhands(rob):
     cv2.destroyAllWindows()
 
 
-def showcamera(rob, codetype = 0, obj_distance=0.12):
+def showcamera(rob, codetype = 0, obj_distance=0.15):
     # codetype ==1 for QR code.
     # obj_distance: distance between the gripper tip to the object. measure using rob.measureheight() function.
     rob.camera.QRdistance = ""
     flipflop = True
     QRpos = []
+    QRdist = None
+    rob.camera.AT_physical_size = 0.010
     at = Detector(families='tag36h11',
                        nthreads=1,
                        quad_decimate=1.0,
                        quad_sigma=0.0,
                        refine_edges=1,
                        decode_sharpening=0.25,
-                       debug=0)
+                       debug=0)    
     while 1:    
         # Capture
         ret, frame = rob.camera.capture()
+        # Ensure frame is a writable NumPy array for OpenCV drawing functions.
+        if not isinstance(frame, np.ndarray):
+            frame = np.array(frame)
+        if not getattr(frame, "flags", None) or not frame.flags.writeable:
+            frame = frame.copy()
 #        frame = cv2.normalize(
 #        frame, None, alpha=0, beta=0.9*255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1
 #    )
@@ -344,12 +360,49 @@ def showcamera(rob, codetype = 0, obj_distance=0.12):
                 if hasattr(rob.camera, 'QRdata'):
                     showQRcode(QRcode, frame)
         gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-        r = at.detect(gray)
+        # Camera intrinsics for pose estimation: [fx, fy, cx, cy].
+        # Principal point is taken as the image center of the current frame.
+        fx = fy = rob.camera.camera_f
+        cx, cy = w / 2.0, h / 2.0
+        r = at.detect(gray, estimate_tag_pose=True,
+                      camera_params=[fx, fy, cx, cy],
+                      tag_size=rob.camera.AT_physical_size)
+        # tag16h5 is very prone to false positives (spurious detections in
+        # noise/texture when no real tag is present). Reject them by requiring
+        # a clean decode (hamming==0) and a strong decision_margin. Real tags
+        # score ~50+; false positives are typically well below ~30.
+        AT_MIN_MARGIN = 30.0
+        r = [d for d in r if d.hamming == 0 and d.decision_margin >= AT_MIN_MARGIN]
+        # Reset the latest pose each frame so key handlers act on a current
+        # detection (None when no valid tag is currently visible).
+        euler = None
         if len(r)==1:
+            #print(rob.camera.AT_physical_size)
             r = r[0]
             (ptA, ptB, ptC, ptD) = r.corners
+            #rob.camera.decoded = r
             QRpos = r.center
             QRdist = rob.camera.getATdistance(r)
+            #ret = decodeAT(img=frame, F=[], cam_f=camera_f, imgH=default_imgH, imgV=default_imgV)
+            # Pose is now populated (pose_R / pose_t). Convert to Euler angles.
+            euler = None
+            if r.pose_R is not None:
+                # AprilTag pose estimation on a planar tag is occasionally
+                # ambiguous and returns a degenerate/left-handed rotation
+                # matrix, which scipy rejects. Skip that frame instead of
+                # crashing the live view.
+                try:
+                    euler, rpost, o = cal_AT2pose(r)
+                except ValueError as ex:
+                    euler = None
+                    print(f"Skipping bad AprilTag pose this frame: {ex}")
+                if euler is not None:
+                    cv2.putText(frame,
+                        "rpy: [{:.1f}, {:.1f}, {:.1f}] deg and {:.3f} m".format(euler[0], euler[1], euler[2], QRdist),
+                        (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                    #print(f"Euler angles: {euler}")
+                    #print(f"Translation vector: {rpost}")
+                    #print(f"Orientation: {o}")
             R, T = rob.camera.H2RT(r.homography)
             ptB = (int(ptB[0]), int(ptB[1]))
             ptC = (int(ptC[0]), int(ptC[1]))
@@ -367,7 +420,16 @@ def showcamera(rob, codetype = 0, obj_distance=0.12):
             tagFamily = r.tag_family.decode("utf-8")
             cv2.putText(frame, tagFamily, (ptA[0], ptA[1] - 15),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            #print("[INFO] tag family: {}".format(tagFamily))            
+            #print("[INFO] tag family: {}".format(tagFamily))   
+            # 
+            #                 imageData = np.asarray(bytearray(resp), dtype="uint8")
+            #pilImage=Image.open(io.BytesIO(imageData))
+            #pilImage = np.asarray(pilImage)
+            #pilImage = frame
+            #rob.camera.image = pilImage
+            #rob.camera.imgH = pilImage.shape[1]
+            #rob.camera.imgV = pilImage.shape[0]
+            #rob.camera.camera_f = camera_f/default_imgH*rob.camera.imgH         
         cv2.imshow('frame', frame)
         #rob.camera.decode2QR()
         key = cv2.waitKey(20) & 0xFF
@@ -400,19 +462,51 @@ def showcamera(rob, codetype = 0, obj_distance=0.12):
         if key == 106: #j
             rob.move_toward_camera(0, north=0, east=-0.025)
         if key == 107: #k
-            rob.move_toward_camera(0.025, north=0, east=0.0)
+            rob.move_toward_camera(0.02, north=0, east=0.0)
         if key == 108: #l
             rob.move_toward_camera(0, north=0, east=0.025)
         if key == 109: #m
             rob.move_toward_camera(0, north=-0.025, east=0.0)
         if key == 111: #o
-            rob.move_toward_camera(-0.025, north=0, east=0.0)
+            rob.move_toward_camera(-0.02, north=0, east=0.0)
         if key == 103: #g
-            rob.roll_around_camera(10, obj_distance+0.18)
+            # Pick sequence: move the TCP to the camera position, plunge down by
+            # the measured tag distance, grip, hold 5 s, release, and retract.
+            if not isinstance(QRdist, (int, float)) or QRdist <= 0:
+                print("No valid tag distance (QRdist). Point the camera at a tag first.")
+            else:
+                try:
+                    rob.release()
+                    QRdist = QRdist - 0.01
+                    print(f"Pick sequence: descending {QRdist:.3f} m to grip...")
+                    #rob.move_toward_camera(0, north=-0.01, east=0.0)
+                    rob.put_tcp2camera()
+                    rob.mvr2z(-QRdist, vel=0.1)   # down (base -Z)
+                    rob.grab()
+                    time.sleep(1)
+                    #rob.release()
+                    rob.mvr2z(QRdist, vel=0.1)    # back up
+                    time.sleep(1)
+                    rob.mvr2z(-QRdist+0.02, vel=0.05)   # down (base -Z + 0.02)
+                    rob.release()
+                    rob.mvr2z(QRdist, vel=0.1)
+                    print("Pick sequence done.")
+                    print("Distance down to the object is {:.3f} m.".format(QRdist))
+                except Exception as ex:
+                    print(f"Pick sequence failed: {ex}")
         if key == 102: #f
             rob.roll_around_camera(-10, obj_distance+0.18)
         if key == 114: #r
-            rob.rotate_around_Zaxis_camera(10)
+            # Rotate the robot around the camera axis by the AprilTag's
+            # measured in-plane roll (euler[2]) to align to the tag.
+            if euler is not None:
+                print(f"Rotating around camera axis by {euler[2]:.2f} degrees...")
+                try:
+                    rob.rotate_around_Zaxis_camera(euler[2])
+                except Exception as ex:
+                    print(f"rotate_around_Zaxis_camera failed: {ex}")
+            else:
+                print("No AprilTag pose available. Point the camera at a tag first.")
         if key == 101: #e
             rob.rotate_around_Zaxis_camera(-10)
         if key == 97: #a
@@ -427,24 +521,78 @@ def showcamera(rob, codetype = 0, obj_distance=0.12):
         if key == 104: #h
             print("Help:")
             print("  focal point change: 0, 1, 2, .. 7")
-            print("  focal point change: a (auto), x(manual), s(scan)")
-            print("  move robot: i(north),j(west),k(toward),l(east),m(south),o (away)")
-            print("  rotate robot: e(-rZ),r(+rZ),f(-rNorth),g(+rNorth)")
-            print("  camera tilt down: t")
+            print("  focus mode: a(auto), x(manual), s(scan)")
+            print("  move robot: i(north),j(west),k(toward),l(east),m(south),o(away)")
+            print("  rotate robot: e(-rZ),f(roll -), r(align rZ to tag)")
+            print("  camera face down: t or d")
+            print("  center camera on AprilTag: y")
             print("  center QR: c")
+            print("  pick sequence (put tcp to camera, grip, retract): g")
             print("  print QR code info: p")
             print("  Measure distance : M")
-            print("  exit: ESC")
+            print("  exit: q or ESC")
         if key == 113: #q
             #print(QRcode)
             break
         if key == 112: #p
             #print(QRcode)
-            print(r.homography)
+            # r may be a list of detections or a single detection object.
+            if isinstance(r, list):
+                if len(r) > 0 and hasattr(r[0], 'homography'):
+                    print(r[0].homography)
+                else:
+                    print(r)
+            else:
+                if hasattr(r, 'homography'):
+                    print(r.homography)
+                else:
+                    print(r)
             print(f"Center position is at [{QRpos}].")
             print(f"Distance from camera is {QRdist} m.")
         if key == 116: #t
-            rob.camera_face_down()
+            ''' time average the AprilTag pose over 10 frames and print the average translation and rotation. '''
+            N = 20
+            eulers = []
+            dists = []
+            for _ in range(N):
+                ret2, f2 = rob.camera.capture()
+                if not ret2:
+                    continue
+                if not isinstance(f2, np.ndarray):
+                    f2 = np.array(f2)
+                g2 = cv2.cvtColor(f2, cv2.COLOR_RGB2GRAY)
+                dets = at.detect(g2, estimate_tag_pose=True,
+                                 camera_params=[fx, fy, cx, cy],
+                                 tag_size=rob.camera.AT_physical_size)
+                dets = [d for d in dets
+                        if d.hamming == 0 and d.decision_margin >= AT_MIN_MARGIN]
+                if len(dets) != 1 or dets[0].pose_R is None:
+                    continue
+                try:
+                    e, tvec, o = cal_AT2pose(dets[0])
+                except ValueError:
+                    continue
+                if e is None:
+                    continue
+                eulers.append(e)
+                dists.append(rob.camera.getATdistance(dets[0]))
+            if len(eulers) == 0:
+                print("Time average: no valid AprilTag detections. Point the camera at a tag.")
+            else:
+                avg = np.mean(np.array(eulers), axis=0)
+                avgdist = float(np.mean(dists))
+                print(f"Time-averaged pose over {len(eulers)}/{N} frames:")
+                print(f"  rpy      = [{avg[0]:.2f}, {avg[1]:.2f}, {avg[2]:.2f}] deg")
+                print(f"  distance = {avgdist:.4f} m")
+        if key == 100: #d
+            rob.put_camera2tcp()
+        if key == 121: #y
+            try:
+                print("Centering to AprilTag...")
+                dd = rob.center_camera2apriltag()
+            except Exception as ex:
+                print(f"orient2aprilTag failed: {ex}")
+                dd = None
         if key == 77: #M
             t = Thread(target=run_measuredistance, args=(rob,))
             t.start()
@@ -471,8 +619,248 @@ def showcamera(rob, codetype = 0, obj_distance=0.12):
 #    rob.camera.stop()
     #t.join()
 
+def resolve_robot_ip(name='UR5'):
+    """Look up a robot's control-box IP from list_of_robots.json by name."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for fn in (os.path.join('RobotList', 'list_of_robots.json'),
+               os.path.join(here, 'RobotList', 'list_of_robots.json'),
+               os.path.join(here, 'list_of_robots.json'),
+               'list_of_robots.json'):
+        if os.path.exists(fn):
+            with open(fn) as f:
+                return json.load(f)[name]
+    raise FileNotFoundError("list_of_robots.json not found.")
+
+def showcamera_ip(ip=None, name='UR5'):
+    """View the IP camera and detect AprilTags without a robot object.
+
+    Useful when the robot is protective-stopped or you just want the camera:
+    the IP camera streams over HTTP (port 4242) independent of the UR
+    controller, so no rob connection is needed.
+
+        showcamera_ip()                # looks up UR5's IP from list_of_robots.json
+        showcamera_ip(name='UR3')      # another robot by name
+        showcamera_ip(ip='164.54.x.x') # explicit IP
+
+    Keys: t = time-average pose over 10 frames, p = print last detection,
+          q or ESC = quit. No robot-motion keys (there is no robot here).
+    """
+    if ip is None:
+        ip = resolve_robot_ip(name)
+    print(f"Opening IP camera at {ip} ...")
+    cam = camera(ip)                      # connectiontype == 'ip'
+    cam.AT_physical_size = 0.010
+    at = Detector(families='tag36h11',
+                  nthreads=1,
+                  quad_decimate=1.0,
+                  quad_sigma=0.0,
+                  refine_edges=1,
+                  decode_sharpening=0.25,
+                  debug=0)
+    AT_MIN_MARGIN = 30.0
+    flipflop = True
+    w = h = None
+    while 1:
+        # capture() raises if the HTTP request fails; treat that as a dropped
+        # frame and keep going instead of tearing down the viewer.
+        try:
+            ret, frame = cam.capture()
+        except Exception as ex:
+            print(f"Frame grab failed: {ex}")
+            if cv2.waitKey(200) & 0xFF in (27, ord('q')):
+                break
+            continue
+        if not ret or frame is None:
+            if cv2.waitKey(200) & 0xFF in (27, ord('q')):
+                break
+            continue
+        if not isinstance(frame, np.ndarray):
+            frame = np.array(frame)
+        if flipflop:
+            h, w, _ = frame.shape
+            print("Camera Frame Size {}".format([w, h]))
+            flipflop = False
+        # IP frames arrive as RGB; convert for correct display colors.
+        disp = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        fx = fy = cam.camera_f
+        cx, cy = w / 2.0, h / 2.0
+        r = at.detect(gray, estimate_tag_pose=True,
+                      camera_params=[fx, fy, cx, cy],
+                      tag_size=cam.AT_physical_size)
+        r = [d for d in r if d.hamming == 0 and d.decision_margin >= AT_MIN_MARGIN]
+        euler = None
+        if len(r) == 1:
+            r = r[0]
+            (ptA, ptB, ptC, ptD) = r.corners
+            QRdist = cam.getATdistance(r)
+            if r.pose_R is not None:
+                try:
+                    euler, rpost, o = cal_AT2pose(r)
+                except ValueError as ex:
+                    euler = None
+                    print(f"Skipping bad AprilTag pose this frame: {ex}")
+                if euler is not None:
+                    cv2.putText(disp,
+                        "rpy: [{:.1f}, {:.1f}, {:.1f}] deg and {:.3f} m".format(
+                            euler[0], euler[1], euler[2], QRdist),
+                        (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            ptA = (int(ptA[0]), int(ptA[1]))
+            ptB = (int(ptB[0]), int(ptB[1]))
+            ptC = (int(ptC[0]), int(ptC[1]))
+            ptD = (int(ptD[0]), int(ptD[1]))
+            cv2.line(disp, ptA, ptB, (0, 255, 0), 2)
+            cv2.line(disp, ptB, ptC, (0, 255, 0), 2)
+            cv2.line(disp, ptC, ptD, (0, 255, 0), 2)
+            cv2.line(disp, ptD, ptA, (0, 255, 0), 2)
+            (cX, cY) = (int(r.center[0]), int(r.center[1]))
+            cv2.circle(disp, (cX, cY), 5, (0, 0, 255), -1)
+            cv2.putText(disp, r.tag_family.decode("utf-8"), (ptA[0], ptA[1] - 15),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        cv2.imshow('frame', disp)
+        key = cv2.waitKey(20) & 0xFF
+        if key in (27, ord('q')):
+            break
+        if key == ord('t'):
+            N = 10
+            eulers = []
+            dists = []
+            for _ in range(N):
+                try:
+                    ret2, f2 = cam.capture()
+                except Exception:
+                    continue
+                if not ret2 or f2 is None:
+                    continue
+                if not isinstance(f2, np.ndarray):
+                    f2 = np.array(f2)
+                g2 = cv2.cvtColor(f2, cv2.COLOR_RGB2GRAY)
+                dets = at.detect(g2, estimate_tag_pose=True,
+                                 camera_params=[fx, fy, cx, cy],
+                                 tag_size=cam.AT_physical_size)
+                dets = [d for d in dets
+                        if d.hamming == 0 and d.decision_margin >= AT_MIN_MARGIN]
+                if len(dets) != 1 or dets[0].pose_R is None:
+                    continue
+                try:
+                    e, tvec, o = cal_AT2pose(dets[0])
+                except ValueError:
+                    continue
+                if e is None:
+                    continue
+                eulers.append(e)
+                dists.append(cam.getATdistance(dets[0]))
+            if len(eulers) == 0:
+                print("Time average: no valid AprilTag detections.")
+            else:
+                avg = np.mean(np.array(eulers), axis=0)
+                print(f"Time-averaged pose over {len(eulers)}/{N} frames:")
+                print(f"  rpy      = [{avg[0]:.2f}, {avg[1]:.2f}, {avg[2]:.2f}] deg")
+                print(f"  distance = {float(np.mean(dists)):.4f} m")
+        if key == ord('p'):
+            if hasattr(r, 'homography'):
+                print(r.homography)
+            else:
+                print("No current AprilTag.")
+        time.sleep(0.1)
+    cv2.destroyAllWindows()
+
+def _detect_apriltag(rob, settle=0.3):
+    """Capture one frame and return the AprilTag detection (or None)."""
+    time.sleep(settle)              # let the image settle after a move
+    rob.camera.capture()
+    return rob.camera.decodeAT()    # single detection or None
+
+def _facedown_keeping_tag(rob, step=5, max_steps=24):
+    """Tilt the camera toward straight-down (-Z) in small steps, recentering
+    the tag after each step so it stays in view. Returns True if the camera
+    reached face-down, False if the tag was lost first."""
+    def camz():
+        # z-component of the camera viewing vector; -1 means pointing down.
+        return rob.get_camera_vector()[0][2]
+    # Probe once to learn which tilt sign drives the camera toward -Z.
+    z0 = camz()
+    rob.rotx(step, coordinate='camera')
+    if camz() > z0:
+        direction = -1
+        rob.rotx(-step, coordinate='camera')   # undo the probe
+    else:
+        direction = 1
+    if _detect_apriltag(rob) is None:
+        print("Lost the tag while facing down; stopping tilt.")
+        return False
+    rob.center_camera2apriltag()
+    for _ in range(max_steps):
+        if camz() <= -0.999:
+            return True
+        rob.rotx(direction * step, coordinate='camera')
+        if _detect_apriltag(rob) is None:
+            print("Lost the tag while facing down; stopping tilt.")
+            return False
+        rob.center_camera2apriltag()
+    return camz() <= -0.999
+
+def search_apriltag_by_tilt(rob, ref_pos=(-0.3, -0.3, 0.4),
+                            tilt_range=30, tilt_step=15):
+    """Search for an AprilTag by tilting the camera at a reference position.
+
+    Sequence:
+      1. Move the TCP to ``ref_pos`` (keeping the current orientation).
+      2. Switch to the camera TCP (rob.camtcp) so tilts pivot about the camera.
+      3. Tilt about the camera X and Y axes over +/- ``tilt_range`` degrees
+         (in ``tilt_step`` steps, trying 0,0 first) until a tag is detected.
+      4. Once found, tip the camera face-down while keeping the tag in view,
+         then run center_camera2apriltag().
+
+    Returns True if a tag was found and centered, False otherwise.
+    """
+    # 1. Move to the reference position with the current (gripper) TCP.
+    print(f"Moving to reference position {list(ref_pos)} ...")
+
+    rob.moveto(list(ref_pos))
+    rob.set_orientation()  # keep the current orientation
+    rob.put_camera2tcp()  # ensure the camera is in the TCP frame
+    # 2. Switch to the camera TCP so rotations pivot about the camera point.
+    rob.set_tcp(rob.camtcp)
+    found = None
+    try:
+        base = rob.get_pose()               # camera-TCP pose at the reference
+        base_pos = base.get_pos()
+        angles = list(range(-tilt_range, tilt_range + 1, tilt_step))
+        # Order the grid by increasing tilt magnitude, so 0,0 is tried first.
+        grid = sorted(((ax, ay) for ax in angles for ay in angles),
+                      key=lambda a: a[0] ** 2 + a[1] ** 2)
+        for (ax, ay) in grid:
+            t = base.copy()                 # fresh copy; leaves base untouched
+            t.orient.rotate_xt(ax / 180 * math.pi)
+            t.orient.rotate_yt(ay / 180 * math.pi)
+            t.set_pos(base_pos)             # pivot in place about the camera
+            rob.set_pose(t, acc=0.2, vel=0.3, wait=True)
+            time.sleep(5)                  # let the image settle after a move
+            if _detect_apriltag(rob) is not None:
+                print(f"AprilTag found at tilt (x={ax}, y={ay}) deg.")
+                found = (ax, ay)
+                break
+    finally:
+        rob.set_tcp(rob.tcp)                # always restore the gripper TCP
+    if found is None:
+        print("No AprilTag found within the tilt search range.")
+        return False
+    # 3./4. Face the camera down keeping the tag in view, then fine-center.
+    print("Tipping camera face-down while keeping the tag in view ...")
+    _facedown_keeping_tag(rob)
+    rob.orient2aprilTag()
+    rob.set_orientation()
+    rob.put_camera2tcp()
+    rob.mvr2z(0.1)
+    rob.center_camera2apriltag()
+    rob.center_camera2apriltag()
+    rob.center_camera2apriltag()
+    rob.center_camera2apriltag()
+    return True
+
 def bring_hand_to_camera_center(rob, box, center, acc=0.1, vel=0.1):
-    # distance vs pixel size 
+    # distance vs pixel size
     # pixel distance = 1/d (in meter)*100
     #print(box[2], box[3])
     d = 190.0/box[3]  # when hand is open and fingers are up.
