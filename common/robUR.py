@@ -1,13 +1,16 @@
 ''' This program is to define UR robot with Robotiq gripper and camera '''
 import time
-from PyQt5.QtCore import QObject
+from PyQt5.QtCore import QObject, pyqtSignal
 
 import numpy as np
 import logging
 import math
-import math3d as m3d
+from common import m3d
 import os
-from enum import Enum
+# Safety/robot mode enums live in the dependency-free common.urmodes leaf module
+# (imported by the low-level drivers too, to avoid a cyclic robUR import).
+# Re-exported here for backward compatibility (robUR.SafetyMode etc.).
+from common.urmodes import SafetyMode, SafetyStatus, RobotMode
 import sys
 sys.path.append('..')
 from common.urdashboard import dashboard
@@ -37,7 +40,8 @@ class NoCameraException(Exception):
 class NoFingerException(Exception):
     pass
 
-
+DEFAULT_SPEED = 0.1
+DEFAULT_ACCEL = 0.1
 #from urrobot import URRobot
 
 #### Standard orientations.
@@ -64,51 +68,13 @@ m3d_Zdown_cameraYm = [[1, 0, 0], [0, -1, 0], [0, 0, -1]]
 # Define your own robot to include camera and dashboard....
 # edit all these basic functions to work.
 
-class SafetyMode(Enum):
-    IS_NORMAL_MODE = 1
-    IS_REDUCED_MODE = 2
-    IS_PROTECTIVE_STOPPED = 3
-    IS_RECOVERY_MODE = 4
-    IS_SAFEGUARD_STOPPED = 5
-    IS_SYSTEM_EMERGENCY_STOPPED = 6
-    IS_ROBOT_EMERGENCY_STOPPED = 7
-    IS_EMERGENCY_STOPPED = 8
-    IS_VIOLATION = 9
-    IS_FAULT = 10
-    IS_STOPPED_DUE_TO_SAFETY = 11
-
-class SafetyStatus(Enum):
-    SAFETY_STATUS_SYSTEM_THREE_POSITION_ENABLING_STOP	= 13
-    SAFETY_STATUS_AUTOMATIC_MODE_SAFEGUARD_STOP	= 12
-    SAFETY_STATUS_UNDEFINED_SAFETY_MODE	= 11
-    SAFETY_STATUS_VALIDATE_JOINT_ID	= 10
-    SAFETY_STATUS_FAULT	= 9
-    SAFETY_STATUS_VIOLATION	= 8
-    SAFETY_STATUS_ROBOT_EMERGENCY_STOP	= 7
-    SAFETY_STATUS_SYSTEM_EMERGENCY_STOP	=6
-    SAFETY_STATUS_SAFEGUARD_STOP	=5
-    SAFETY_STATUS_RECOVERY	=4
-    SAFETY_STATUS_PROTECTIVE_STOP	=3
-    SAFETY_STATUS_REDUCED	= 2
-    SAFETY_STATUS_NORMAL	=1
-
-class RobotMode(Enum):
-    ROBOT_MODE_NO_CONTROLLER	= -1	
-    ROBOT_MODE_DISCONNECTED		= 0	
-    ROBOT_MODE_CONFIRM_SAFETY	= 1	
-    ROBOT_MODE_BOOTING			= 2	
-    ROBOT_MODE_POWER_OFF		= 3	
-    ROBOT_MODE_POWER_ON			= 4	
-    ROBOT_MODE_IDLE				= 5	
-    ROBOT_MODE_BACKDRIVE		= 6	
-    ROBOT_MODE_RUNNING			= 7	
-    ROBOT_MODE_UPDATING_FIRMWARE = 8	
-
 class UR(QObject):
     # unit of position vector : meter.
-    _TCP2CAMdistance = 0.12
+    sigMoving = pyqtSignal(bool)
+    sigRobotCommand = pyqtSignal(str)
+    sigRobotPosition = pyqtSignal(np.ndarray)
     tcp = [0.0,0.0,0.15,0.0,0.0,0.0]
-    camtcp = [0, 0.0433, 0.015, -math.pi/180*30, 0, 0]
+    # Camera-specific geometry (_TCP2CAMdistance, camtcp) lives in UR_cam_grip.
 
     def __init__(self, name = 'UR3', package='urxe', grippertype=1, cameratype=1, use_rtde=False):
         super().__init__()
@@ -132,6 +98,7 @@ class UR(QObject):
         ## load package.........
         if package == 'urxe':
             from urxe.robot import RobotiqGripper
+            #from urxe.robot import RobotiqCamera
             from urxe.robot import Robot
         if package == 'rtde':
             from rtde.robot import Robot
@@ -151,8 +118,10 @@ class UR(QObject):
 
         if cameratype==2:
             self.camera = camera(IP='')
+#            self.camera = RobotiqCamera(self.robot)
         elif cameratype==1:
             self.camera = camera(IP)
+#            self.camera = RobotiqCamera(self.robot)
         else:
             pass
 
@@ -205,11 +174,6 @@ class UR(QObject):
 
     def terminate(self):
         self.robot.close()
-        try:
-            if hasattr(self, 'camera'):
-                self.camera.vidcap.release()
-        except:
-            pass
 
     def set_payload(self, *args, **kwargs):
         self.robot.set_payload(*args, **kwargs)
@@ -382,7 +346,7 @@ class UR(QObject):
                 orient = m3d.Orientation(ang[0])
             t = self.get_pose()
             t.orient = orient
-            self.set_pose(t, 0.5, 0.5, wait=True)
+            self.set_pose(t, 0.1, 0.1, wait=True)
             return t
         myang = [0, -180, 0]
         if len(ang) != 0:
@@ -393,7 +357,7 @@ class UR(QObject):
             myang[i] = myang[i]*math.pi/180
         #v0 = self.get_xyz().tolist()
         #v0 = [v0[0], v0[1], v0[2], myanglearray[0],myanglearray[1],myanglearray[2]]
-        return self.set_orientation_rad(myang, acc=1, vel=0.5)
+        return self.set_orientation_rad(myang, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED)
 
     def get_xyz(self):
         # return the Cartesian position as a numpy array
@@ -414,37 +378,37 @@ class UR(QObject):
             return True
 # Linear motions
     # absolute positinng
-    def move2x(self, val, acc=0.5, vel=0.5, wait=True):
+    def move2x(self, val, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED, wait=True):
         v = self.get_xyz().tolist()
         v[0] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    def move2y(self, val, acc=0.5, vel=0.5, wait=True):
+    def move2y(self, val, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED, wait=True):
         v = self.get_xyz().tolist()
         v[1] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    def move2z(self, val, acc=0.5, vel=0.5, wait=True):
+    def move2z(self, val, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED, wait=True):
         v = self.get_xyz().tolist()
         v[2] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    def move2rx(self, val, acc=0.5, vel=0.5, wait=True):
+    def move2rx(self, val, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED, wait=True):
         v = list(self.get_pose().get_pose_vector())
         v[3] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    def move2ry(self, val, acc=0.5, vel=0.5, wait=True):
+    def move2ry(self, val, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED, wait=True):
         v = list(self.get_pose().get_pose_vector())
         v[4] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    def move2rz(self, val, acc=0.5, vel=0.5, wait=True):
+    def move2rz(self, val, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED, wait=True):
         v = list(self.get_pose().get_pose_vector())
         v[5] = val
         self.moveto(v, acc=acc, vel=vel, wait=wait)
 
-    def move_poses(self, pos_list, radius = 0.01, acc=0.5, vel=0.5, wait=True):
+    def move_poses(self, pos_list, radius = 0.01, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED, wait=True):
         " movels([0.1, 0.1, 0.1], [0.2, 0.2, 0.2], [0.2, 0.3, 0.2]], radius=0.1)"
         v = self.get_xyz().tolist()
         for i, vec in enumerate(pos_list):
@@ -455,7 +419,7 @@ class UR(QObject):
         pose = self.movels(pos_list, acc=acc, vel=vel, radius=radius, wait=wait)
         return pose
 
-    def moveto(self, position, command="movel", acc=0.5, vel=0.5, wait=True):
+    def moveto(self, position, command="movel", acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED, wait=True):
         if type(position) == list or np.ndarray:
             if len(position) == 3:
                 # get_xyz() is position only (3 elements); the current
@@ -472,28 +436,28 @@ class UR(QObject):
         return pose
 
 # Relative motion in the base coordinate .
-    def mvr2x(self, x, acc=0.5, vel=0.5, wait=True):
+    def mvr2x(self, x, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED, wait=True):
         # identical to mvrx
         self.translate([x, 0, 0], acc=acc, vel=vel, wait=wait)
         
-    def mvr2y(self, y, acc=0.5, vel=0.5, wait=True):
+    def mvr2y(self, y, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED, wait=True):
         # identical to mvry
         self.translate([0, y, 0], acc=acc, vel=vel, wait=wait)
 
-    def mvr2z(self, z, acc=0.5, vel=0.5, wait=True):
+    def mvr2z(self, z, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED, wait=True):
         # identical to mvrz
         self.translate([0, 0, z], acc=acc, vel=vel, wait=wait)
     
 # Relative motion in the TCP coordinate.
-    def mvr2xTCP(self, x=0.05, acc=0.5, vel=0.5, wait=True):
+    def mvr2xTCP(self, x=0.05, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED, wait=True):
         # relative motion along x based on TCP coordinate.
         self.translate_tool([x, 0, 0], acc=acc, vel=vel, wait=wait)
 
-    def mvr2yTCP(self, y=0.05, acc=0.5, vel=0.5, wait=True):
+    def mvr2yTCP(self, y=0.05, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED, wait=True):
         # relative motion along y based on TCP coordinate.
         self.translate_tool([0, y, 0], acc=acc, vel=vel, wait=wait)
 
-    def mvr2zTCP(self, z=0.05, acc=0.5, vel=0.5, wait=True):
+    def mvr2zTCP(self, z=0.05, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED, wait=True):
         # relative motion along z based on TCP coordinate.
         self.translate_tool([0, 0, z], acc=acc, vel=vel, wait=wait)
 
@@ -514,13 +478,6 @@ class UR(QObject):
             t = m3d.Transform()
             t.orient.rotate_xt(val)
             return self.add_pose_base(t, wait=wait, acc=acc, vel=vel)
-        if coordinate == 'camera':
-            self.set_tcp(self.camtcp)
-            t = self.get_pose()
-            t.orient.rotate_xt(val)
-            m = self.set_pose(t, wait=wait, acc=acc, vel=vel)
-            self.set_tcp(self.tcp)
-            return m
 
     def roty(self, val, coordinate='tcp', wait=True, acc=0.1, vel=0.3):
         # rotate around Y axis by val in degree
@@ -533,14 +490,6 @@ class UR(QObject):
             t = m3d.Transform()
             t.orient.rotate_yt(val)
             return self.add_pose_base(t, wait=wait, acc=acc, vel=vel)
-        if coordinate == 'camera':
-            self.set_tcp(self.camtcp)
-#            m = self.rotate([0, 1, 0], val)
-            t = self.get_pose()
-            t.orient.rotate_yt(val)
-            m = self.set_pose(t, wait=wait, acc=acc, vel=vel)
-            self.set_tcp(self.tcp)
-            return m
 
     def rotz(self, val, coordinate='tcp', wait=True, acc=0.1, vel=0.3):
         # rotate around Z by val in degree
@@ -553,13 +502,6 @@ class UR(QObject):
             t = m3d.Transform()
             t.orient.rotate_zt(val)
             return self.add_pose_base(t, wait=wait, acc=acc, vel=vel)
-        if coordinate == 'camera':
-            self.set_tcp(self.camtcp)
-            t = self.get_pose()
-            t.orient.rotate_zt(val)
-            m = self.set_pose(t, wait=wait, acc=acc, vel=vel)
-            self.set_tcp(self.tcp)
-            return m
 
     def rotj(self, *ang):
         # rotate joints by relative angle in degree
@@ -572,7 +514,7 @@ class UR(QObject):
             j[i] = j[i] + myang[i]
         self.movej(j)
 
-    def rotate(self, rotaxis, rot_angles, coordinate='tcp', wait=True, acc=0.5, vel=0.5):
+    def rotate(self, rotaxis, rot_angles, coordinate='tcp', wait=True, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED):
         # rotate around an axis by a relative amount.
         # rotaxis : rotation axis in the given coordination system.
         # rot_angles: rotation angle in degree
@@ -590,7 +532,7 @@ class UR(QObject):
             t.orient.rotate_zt(math.pi/180*rot_angles)
             return self.add_pose_base(t, wait=wait, acc=acc, vel=vel)
 
-    def rotate_ref(self, rotpos, rotaxis, rot_angles, acc=0.5, vel=0.5):
+    def rotate_ref(self, rotpos, rotaxis, rot_angles, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED):
         # rotate around a given TCP position around an axis by a relative amount.
         # rotpos : center of rotation
         # rotaxis : rotation axis
@@ -640,7 +582,7 @@ class UR(QObject):
         #print(v)
         t.orient.set_array(v)
         #print(t.orient.get_rotation_vector())
-        return self.set_orientation_rad(t.orient.get_rotation_vector(), acc=0.5, vel=0.5)
+        return self.set_orientation_rad(t.orient.get_rotation_vector(), acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED)
 # special functions
 
     def measureheight(self): # measure height by bumping along -z direction.
@@ -656,13 +598,9 @@ class UR(QObject):
         #distance = v[2]+0.01
         return v
 
-######## How to use m3d.
-# To rotate in the TCP frame,
-# trans = self.get_pose()  # here trans represents the transformed TCP coordinate.
-# To rate in the robot base frame,
-# trans = m3d.Transform()  # make a new m3d object, 
-
-# Then, trans.orient.rotate_xt(), rotate_yt(), rotate_zt(), or rotate_t(ax, angle)
+# See common/m3d.py for a quick reference on using math3d (Transform /
+# Orientation): building a Transform from a UR 6-element pose list, setting the
+# orientation, and rotating in the TCP vs. base frame.
 
 # def ind2sub(ind, array_shape):
 #     rows = int(ind / array_shape[1])
@@ -675,6 +613,10 @@ class UR(QObject):
 # This class add advanced methods to the UR_grip class.
 # for example, combining camera, dashboard, and robot motion all together.
 class UR_grip(UR):
+    sigGripper = pyqtSignal(str)
+    sigGripperPosition = pyqtSignal(str)
+    sigObject_ongripper = pyqtSignal(bool)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -735,12 +677,90 @@ class UR_grip(UR):
 
 # This class add advanced methods to the UR_cam_grip class.
 # for example, combining camera, dashboard, and robot motion all together.
+# with open(os.path.join(text_file_path, '..', 'urscripts', 'camera.script'), 'r') as file:
+#     CameraScript = file.read()
+# with open(os.path.join(text_file_path, '..', 'urscripts', 'restart_robotiq.script'), 'r') as file:
+#     RestartRobotiqScript = file.read()
 
 class UR_cam_grip(UR_grip):
+    # Camera-specific geometry (only meaningful when a camera is mounted).
+    _TCP2CAMdistance = 0.12
+    camtcp = [0, 0.0433, 0.015, -math.pi/180*30, 0, 0]
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-# Camera functions.
+    def terminate(self):
+        # Release the camera before closing the robot connection.
+        try:
+            if hasattr(self, 'camera'):
+                self.camera.vidcap.release()
+        except:
+            pass
+        super().terminate()
+
+# Camera-frame rotations: temporarily switch to the camera TCP so the rotation
+# is taken about the camera frame, then restore the tool TCP. Other coordinate
+# systems ('tcp', 'base') are handled by the base UR implementation.
+    def rotx(self, val, coordinate='tcp', wait=True, acc=0.1, vel=0.3):
+        if coordinate == 'camera':
+            self.set_tcp(self.camtcp)
+            t = self.get_pose()
+            t.orient.rotate_xt(val/180*math.pi)
+            m = self.set_pose(t, wait=wait, acc=acc, vel=vel)
+            self.set_tcp(self.tcp)
+            return m
+        return super().rotx(val, coordinate=coordinate, wait=wait, acc=acc, vel=vel)
+
+    def roty(self, val, coordinate='tcp', wait=True, acc=0.1, vel=0.3):
+        if coordinate == 'camera':
+            self.set_tcp(self.camtcp)
+            t = self.get_pose()
+            t.orient.rotate_yt(val/180*math.pi)
+            m = self.set_pose(t, wait=wait, acc=acc, vel=vel)
+            self.set_tcp(self.tcp)
+            return m
+        return super().roty(val, coordinate=coordinate, wait=wait, acc=acc, vel=vel)
+
+    def rotz(self, val, coordinate='tcp', wait=True, acc=0.1, vel=0.3):
+        if coordinate == 'camera':
+            self.set_tcp(self.camtcp)
+            t = self.get_pose()
+            t.orient.rotate_zt(val/180*math.pi)
+            m = self.set_pose(t, wait=wait, acc=acc, vel=vel)
+            self.set_tcp(self.tcp)
+            return m
+        return super().rotz(val, coordinate=coordinate, wait=wait, acc=acc, vel=vel)
+
+    # # when Robotiq camera is used, the focus command is sent to the robot controller
+    # def focus_camera(self, value, wait=True):
+    #     #data = CheckdistanceScript
+    #     print(f"focusing to {value}")
+    #     data = CameraScript.replace('__replace__', f'{int(value)}')
+    #     print(data)
+    #     self.robot.send_program(data)
+    #     #while not self.robot.is_program_running():
+    #     #    time.sleep(0.01)
+    #     #if wait:
+    #     #    while self.robot.is_program_running():
+    #     #        time.sleep(0.01)
+
+    # # Restart the Robotiq vision daemon on the UR controller. Use this when the
+    # # wrist camera stops responding (stale /current.jpg, frozen feed, etc.).
+    # def restart_robotiq_camera(self):
+    #     print("Restarting the Robotiq camera service...")
+    #     self.robot.send_program(RestartRobotiqScript)
+
+# # Camera functions.
+#     def focus(self, val):
+#         # USB cameras focus locally through OpenCV. The wrist (IP) camera has no
+#         # local focus control, so send the Robotiq URScript focus command through
+#         # the UR secondary interface instead.
+#         if self.camera.connectiontype == 'usb':
+#             self.camera.focus(val)
+#         else:
+#             self.robot.send_program(f"rq_set_focus({int(val)})")
+
     def is_camera_facedown(self):
         vec, _, _ = self.get_camera_vector()
         if abs(vec[2]) < 0.999:
@@ -760,7 +780,7 @@ class UR_cam_grip(UR_grip):
         t.set_pos(self.get_pos())
         self.set_pose(t, 0.5, 0.5, wait=True)
 
-    def tweak_around_camera_axis(self, ang, acc=0.5, vel=0.5):
+    def tweak_around_camera_axis(self, ang, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED):
         if not hasattr(self, 'camera'):
             raise NoCameraException('No camera defined.')
 
@@ -845,7 +865,7 @@ class UR_cam_grip(UR_grip):
         if self.is_camera_facedown():
             return self.rotx(-30, coordinate=coordinate)
 
-    def move_over_camera(self, distance, acc=0.5, vel=0.5):
+    def move_over_camera(self, distance, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED):
         if not hasattr(self, 'camera'):
             raise NoCameraException('No camera defined.')
         # move along the camera north direction.
@@ -962,7 +982,7 @@ class UR_cam_grip(UR_grip):
 #        v0 = [v0[0]+sh, v0[1], v0[2], 0, math.pi, 0]
         np0 = m3d.Transform(v0)
 
-        self.movel(np0, acc=0.5, vel=0.5)
+        self.movel(np0, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED)
 
     def get_inplane_angle_from_idealZ(self):
         t = self.get_pose()
@@ -1062,7 +1082,7 @@ class UR_cam_grip(UR_grip):
         # Camera-relative motion helpers (copied from common.robUR) — present on UR3
         # Added here so UR5 instances expose the same API expected by camera_tools.
     
-    def move_toward_camera(self, distance, north=0.0, east=0.0, acc=0.5, vel=0.5):
+    def move_toward_camera(self, distance, north=0.0, east=0.0, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED):
         if not hasattr(self, 'camera'):
             raise Exception('No camera defined.')
         cameravector, northv, eastv = self.get_camera_vector()
@@ -1076,15 +1096,22 @@ class UR_cam_grip(UR_grip):
         self.set_pose(np_trans, acc=acc, vel=vel, wait=True, command="movej", threshold=None)
 
     def roll_around_camera(self, val, distance, dir='y'):
+        # val may be a scalar (rotate about the axis given by dir) or a
+        # [x_angle, y_angle] list to rotate about camera X then Y in one call.
         if not hasattr(self, 'camera'):
             raise Exception('No camera defined.')
         newtcp = list(self.camtcp)
         newtcp[2] = distance
         self.set_tcp(newtcp)
-        if dir == 'y':
-            self.roty(val, coordinate='tcp', acc=0.5, vel=0.5)
+        if isinstance(val, (list, tuple, np.ndarray)):
+            if val[0]:
+                self.rotx(val[0], coordinate='tcp', acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED)
+            if val[1]:
+                self.roty(val[1], coordinate='tcp', acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED)
+        elif dir == 'y':
+            self.roty(val, coordinate='tcp', acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED)
         else:
-            self.rotx(val, coordinate='tcp', acc=0.5, vel=0.5)
+            self.rotx(val, coordinate='tcp', acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED)
         self.set_tcp(self.tcp)
 
     def rotate_around_Zaxis_camera(self, ang):
@@ -1125,6 +1152,7 @@ class UR_cam_grip(UR_grip):
         if not isinstance(r, atDET):
             print("No aprilTag in the camera. Capture it and try again.")
             return False
+        
         for _ in range(max_iter):
             #euler, t, pos = cal_AT2pose(r)
             h, w, _ = self.camera.image.shape
@@ -1137,17 +1165,19 @@ class UR_cam_grip(UR_grip):
                 return True
             dX = -dx/self.camera.camera_f*QRdist
             dY = dy/self.camera.camera_f*QRdist
-            self.move_toward_camera(distance=0, north=dY, east=dX, acc=0.01, vel=0.01)
+            self.move_toward_camera(distance=0, north=dY, east=dX, acc=0.05, vel=0.05)
             # recapture and re-decode to measure the new offset
-            cnt = 0
-            while cnt < 5:
-                self.camera.capture()
+            t0 = time.time()
+            while time.time() - t0 < 5:  # timeout after 5 seconds
+                # When a live display loop (showcamera) is already capturing,
+                # reuse its latest frame instead of grabbing our own.
+                if not self.camera._running:
+                    self.camera.capture()
                 r = self.camera.decodeAT()
                 if isinstance(r, atDET):
                     break
-                cnt += 1
                 time.sleep(0.5)
-            if cnt == 5:
+            if time.time() - t0 >= 5:
                 print("Lost the aprilTag after moving.")
                 return False
         print("aprilTag centering did not converge within max_iter iterations.")
@@ -1158,11 +1188,16 @@ class UR_cam_grip(UR_grip):
         trial = 0
         done = False
         while trial<max_trialN:
-            img = self.camera.capture()
+            # When a live display loop (showcamera) is already capturing, reuse
+            # its latest frame instead of grabbing our own (avoids a two-reader
+            # race on the shared camera).
+            if not self.camera._running:
+                self.camera.capture()
             r = self.camera.decodeAT()
             if isinstance(r, atDET):
                 done = True
                 break
+            trial += 1
         if done:
             self._center_aprilTag(tol=tol, max_iter=max_iter)
             return done

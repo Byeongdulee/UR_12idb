@@ -1,0 +1,8 @@
+def restart_robotiq_camera_service():
+    # Kill and restart the Robotiq vision daemon process on the UR Linux OS
+    pksystem("pgrep -f vision | xargs kill -9")
+    sleep(2.0) # Allow daemon process manager to auto-restart the service
+    
+    # Re-instantiate the XML-RPC client
+    global rq_cam = rpc_factory("xmlrpc", "http://127.0.0.1:4242")
+end

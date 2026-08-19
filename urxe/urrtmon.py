@@ -15,7 +15,7 @@ from copy import deepcopy
 
 import numpy as np
 
-import math3d as m3d
+from common import m3d  # centralized math3d (4.x compat applied in common.m3d)
 
 __author__ = "Byeongdu Lee"
 __copyright__ = "Copyright 2022, Argonne National Laboratory"

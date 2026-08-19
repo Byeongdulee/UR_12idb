@@ -1,0 +1,22 @@
+def reset_and_set_camera():
+    # Store handle in a global or static local scope
+    global rq_cam = rpc_factory("xmlrpc", "http://127.0.0.1:4242")
+    
+    # 1. Reset/Ping the connection to flush stale sockets
+    # Calling a light RPC method forces the socket to verify state
+    
+    # 2. Re-apply your desired focus and LED settings
+    # change camera focus 
+    # 0 = close focus (~40mm), 255 = far focus / infinity
+    #rq_cam.set_focus(__replace__)
+    
+    # 3. Control LED / Lighting
+    # Toggle LEDs on/off (1 = ON, 0 = OFF)
+    rq_cam.set_led_state(1)
+    
+    # 4. LEB Brightness
+    # Set LED Brightness percentage (0 to 100)
+    rq_cam.set_led_brightness(80)
+    
+    sleep(0.15)
+end

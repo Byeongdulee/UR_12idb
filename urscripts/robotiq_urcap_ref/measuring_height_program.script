@@ -1,0 +1,281 @@
+# Measuring program
+
+def measure_object_height():
+  
+  # Program states
+  PROGRAM_STARTED         = <%state_started_value%>
+  MEASURING_START         = <%state_measuring_start_value%>
+  MEASURING_POSE          = <%state_new_pose_value%>
+  DONE_ERROR              = <%state_done_error_value%>
+  DONE_SUCCESS            = <%state_done_success_value%>
+
+
+  # Error codes
+  ERROR_MODEL_NOT_FOUND = 1 # "Model not found. Be sur part is visible by camera and try again."
+  ERROR_POSE_UNREACHABLE = 2 # "Some scan poses are unreachable. Move part and try again."
+  ERROR_NOT_ENOUGH_POSES = 3 # "Model lost in more than four view point. Move part and try again."
+  ERROR_MEASURING_FAILED = 4 # "Measuring failed. Move part and try again."
+
+  MODEL_ID = 0
+
+  MAX_MEASURING_RETRIES = 4
+
+  <%function get_T_in_base_from_flange%>
+  
+  linalg=rpc_factory("xmlrpc",<%rq_xmlrpc_linalg_uri%>)
+
+  def savate(p1, p2, j1, j2):#{{{
+
+    #calculer le deplacement articulaire maximale pour empecher les savates
+    if linalg.max(linalg.abs(linalg.substract(j1, j2))) > d2r(180):
+      return True
+    end
+
+    #calculer le path length pour empecher les savates
+    linearPathLength = pose_dist(p1, p2)
+    jointPathLength = rq_xmlrpc_services.getpathlength(j1, j2)
+    if jointPathLength > (2 * linearPathLength):
+        return True
+    end
+
+    return False
+
+  end#}}}
+
+  def poseToList(p):
+      return [p[0], p[1], p[2], p[3], p[4], p[5]]
+  end
+
+  def listToPose(l):
+      return p[l[0], l[1], l[2], l[3], l[4], l[5]]
+  end
+
+  start_position_joint = <%joint last_position%>
+
+  movej(start_position_joint)
+
+  monitor = rpc_factory("xmlrpc", <%xmlrpc_monitor_uri%>)
+  
+  rq_xmlrpc_services = rpc_factory("xmlrpc", <%rq_xmlrpc_server_uri%>)
+
+  vision_server = rpc_factory("xmlrpc",<%xmlrpc_vision_uri%>)
+
+  monitor.setProgramState(PROGRAM_STARTED)
+
+  monitor.setProgramState(MEASURING_START)
+
+  p = get_actual_tool_flange_pose() #get_T_in_base_from_flange(p[0,0,0,0,0,0]) # assume camera at flange
+  
+  m = vision_server.beginmeasuremodel(MODEL_ID, p[0], p[1], p[2], p[3], p[4], p[5])
+
+  textmsg("beginmeasuremodel = ", m)
+
+  succeed = m[0]
+  if succeed < 0.5:
+    monitor.setProgramState(DONE_ERROR, ERROR_MODEL_NOT_FOUND)
+    textmsg(DONE_ERROR)
+    halt
+  end
+ 
+  T_camera_in_flange = p[m[7]/1000.0, m[8]/1000.0, m[9]/1000.0, m[10], m[11], m[12]]
+  T_camera_in_base = get_T_in_base_from_flange(T_camera_in_flange)
+  T_tcp_in_base = get_actual_tcp_pose()
+  T_camera_in_tcp = pose_trans(pose_inv(T_tcp_in_base), T_camera_in_base)
+  T_tcp_in_camera = pose_inv(T_camera_in_tcp)
+
+  T_object_in_base = p[m[1], m[2], m[3], m[4], m[5], m[6]] #l'axe des z devrait pointer vers la grille
+
+
+  textmsg("T_camera_in_flange : ", T_camera_in_flange)
+  textmsg("T_object_in_base : ", T_object_in_base)
+  textmsg("T_camera_in_base : ", T_camera_in_base)
+  
+
+  ###################################
+
+  
+  #radial_distance
+  T_object_xyz   = p[T_object_in_base[0],T_object_in_base[1], T_object_in_base[2],0,0,0]
+  T_camera_xyz = p[T_camera_in_base[0],T_camera_in_base[1], T_camera_in_base[2],0,0,0]
+  radial_distance = pose_dist(T_object_xyz,T_camera_xyz) #distance en z entre la camera et le plan pour le mesurage de l'objet
+  textmsg("radial_distance : ", radial_distance)
+
+  radial_distance_min = 0.28
+  radial_distance_max = 0.6 #distance max pour UR5
+
+  URType = rq_xmlrpc_services.getrobottype()
+  if URType == 3:    #UR3
+    radial_distance_max = 0.4 #distance max pour UR3
+  elif URType == 2: #UR10
+    radial_distance_max = 0.8 #distance max pour UR10
+  end
+
+  if radial_distance < radial_distance_min: #pour éviter que la 2F140 accroche la table pendant la mesure de l'objet
+     radial_distance = radial_distance_min
+  elif radial_distance > radial_distance_max:
+     radial_distance = radial_distance_max #pour eviter d'avoir trop de poses inateignables
+  end
+  
+  minLinearMeasuringDistance = 0.1 * radial_distance
+
+  P0P1=pose_trans(p[0,0,0,T_camera_in_base[3], T_camera_in_base[4], T_camera_in_base[5]], p[0,0,1,0,0,0])
+  P0P2=pose_trans(p[0,0,0,T_object_in_base[3], T_object_in_base[4], T_object_in_base[5]], p[0,0,1,0,0,0])
+
+  textmsg("P0P1 : ", P0P1)
+  textmsg("P0P2 : ", P0P2)
+
+  crossProd = [P0P1[1]*P0P2[2]-P0P1[2]*P0P2[1], -1*(P0P1[0]*P0P2[2]-P0P1[2]*P0P2[0]), P0P1[0]*P0P2[1]-P0P1[1]*P0P2[0]]
+  phi = asin(norm(crossProd))
+  textmsg("phi : ", r2d(phi))
+
+  nphi = phi/norm(crossProd)
+
+  T_object_in_base = pose_add(p[0,0,0,crossProd[0]*nphi,crossProd[1]*nphi,crossProd[2]*nphi], p[T_object_in_base[0], T_object_in_base[1], T_object_in_base[2], T_camera_in_base[3], T_camera_in_base[4], T_camera_in_base[5]])
+
+  centered_joint_positions = get_actual_joint_positions()
+  centered_camera_pose_in_base = pose_trans(T_object_in_base, p[0,0,-radial_distance,0,0,0])
+  if rq_xmlrpc_services.doesinversekinexist(centered_camera_pose_in_base):
+      centered_joint_positions = rq_xmlrpc_services.getinversekin(centered_camera_pose_in_base, centered_joint_positions)
+  end
+
+  camera_poses_in_base = linalg.list(9, p[0,0,0,0,0,0]) 
+  measuring_joint_positions = linalg.list(9, p[0,0,0,0,0,0])
+
+  selfcollisioncontextid = rq_xmlrpc_services.createcollisioncontext()
+  ft300id = rq_xmlrpc_services.registercollisionobject(selfcollisioncontextid, ":/ply/FT300.ply")
+  cameraid = rq_xmlrpc_services.registercollisionobject(selfcollisioncontextid, ":/ply/CAMERA.ply", p[0,0,0.0375,0,0,0])
+    
+  previous_tcp_pose_in_base = get_actual_tcp_pose()
+  previous_measuring_joint_position = get_actual_joint_positions()
+    
+  measuring_joint_position = get_actual_joint_positions()
+
+  it = 0
+  nbposes = 0
+
+  while nbposes < 9 and it < 1000:
+    sync()
+    rx = 30*random()-15
+    ry = 30*random()-15
+
+    textmsg("mesuring pose ", it)
+    camera_pose_in_base = pose_trans(T_object_in_base, p[0,0,0,d2r(rx),0,0])
+    camera_pose_in_base = pose_trans(camera_pose_in_base, p[0,0,0,0,d2r(ry),0])
+    camera_pose_in_base = pose_trans(camera_pose_in_base, p[0,0,-radial_distance,0,0,0])
+
+    #verifier que la pose est assez loin des autres
+    i=0
+    while i < nbposes:
+        distance = pose_sub(camera_pose_in_base, camera_poses_in_base[i])
+        linear_dist = norm([distance[0], distance[1], distance[2]])
+
+        if(linear_dist < minLinearMeasuringDistance):
+          i = -1
+          break
+        end
+        i = i+1
+    end
+    if i < 0:
+      continue    
+    end
+    it = it + 1
+    textmsg("it : ", it)
+    
+    tcp_pose_in_base = pose_trans(camera_pose_in_base, T_tcp_in_camera)
+
+    #calcul de la pose articulaire correspondant a la pose de camera
+    if rq_xmlrpc_services.doesinversekinexist(tcp_pose_in_base):
+        measuring_joint_position = rq_xmlrpc_services.getinversekin(tcp_pose_in_base, centered_joint_positions)
+    else:
+        textmsg("rq_xmlrpc_services.doesinversekinexist = false")
+        continue
+    end
+    
+    if not is_within_safety_limits(tcp_pose_in_base):
+         textmsg("is_within_safety_limits(pose) = false")
+         continue
+    end
+     
+    if not is_within_safety_limits(measuring_joint_position):
+        textmsg("is_within_safety_limits(joint position) = false")
+        continue
+    end
+
+    selfcollided = rq_xmlrpc_services.collided(selfcollisioncontextid, measuring_joint_position)
+    if selfcollided:
+        textmsg("self collision detected at joint position ", measuring_joint_position)
+        continue
+    end
+
+    if savate(previous_tcp_pose_in_base, tcp_pose_in_base, previous_measuring_joint_position, measuring_joint_position):
+       textmsg("savate detected")
+       continue
+    end
+
+    camera_poses_in_base[nbposes] = camera_pose_in_base 
+    previous_tcp_pose_in_base = tcp_pose_in_base
+    previous_measuring_joint_position = poseToList(measuring_joint_position)
+    measuring_joint_positions[nbposes] = listToPose(measuring_joint_position)
+
+    nbposes = nbposes + 1
+    textmsg("nbposes : ", nbposes)
+
+  end
+
+  rq_xmlrpc_services.deletecollisioncontext(selfcollisioncontextid)
+
+  if nbposes < 9:
+    textmsg("not enough measuring pose reachable")
+    monitor.setProgramState(DONE_ERROR, ERROR_POSE_UNREACHABLE)
+    halt
+  end
+
+  #on effectue les mesures
+  i=0
+  nbsucceed = 0
+  while i < length(measuring_joint_positions):
+    textmsg("measuring pose ", i)
+    monitor.setProgramState(MEASURING_POSE)
+    textmsg(MEASURING_POSE)
+    movej(poseToList(measuring_joint_positions[i]), a=0.4)
+    sleep(2.0)
+    p = get_actual_tool_flange_pose()
+
+    retries = 0
+    while not vision_server.newmeasuringpose(MODEL_ID, p[0], p[1], p[2], p[3], p[4], p[5]):
+      retries = retries + 1
+      textmsg("retry newmeasuringpose")
+      if retries > MAX_MEASURING_RETRIES:
+        textmsg("Object lost, trying next pose")
+        break
+      end
+    end
+    
+    if retries <= MAX_MEASURING_RETRIES:
+      nbsucceed = nbsucceed +1
+    end
+
+    i=i+1
+  end
+
+  if nbsucceed < 5:
+    monitor.setProgramState(DONE_ERROR, ERROR_NOT_ENOUGH_POSES)
+    textmsg("DONE_ERROR : ERROR_NOT_ENOUGH_POSES")
+    halt
+  end
+
+  r = vision_server.endmeasuremodel(MODEL_ID) #r = [succed_status, heigth of object]
+
+  succeed = r[0]
+  if succeed < 0.5:
+    monitor.setProgramState(DONE_ERROR, ERROR_MEASURING_FAILED)
+    textmsg("DONE_ERROR : ERROR_MEASURING_FAILED : ", r[0])
+    halt
+  end
+
+  textmsg("measured object's heigth : ", r[1])
+  movej(start_position_joint)
+  monitor.setProgramState(DONE_SUCCESS)
+  textmsg(DONE_SUCCESS)
+
+end

@@ -1,7 +1,7 @@
 #from cProfile import run
 import math
 #from xmlrpc.server import _DispatchArity0
-import math3d as m3d
+from common import m3d  # centralized math3d (4.x compat applied in common.m3d)
 import time
 import numpy as np
 #from imutils import paths
@@ -296,6 +296,90 @@ def followhands(rob):
     cv2.destroyAllWindows()
 
 
+def run_pick_sequence(rob, QRdist):
+    # Pick sequence: move the TCP to the camera position, plunge down by
+    # the measured tag distance, grip, hold 5 s, release, and retract.
+    if not isinstance(QRdist, (int, float)) or QRdist <= 0:
+        print("No valid tag distance (QRdist). Point the camera at a tag first.")
+        return
+    try:
+        rob.release()
+        QRdist = QRdist-0.01
+        print(f"Pick sequence: descending {QRdist:.3f} m to grip...")
+        #rob.move_toward_camera(0, north=-0.01, east=0.0)
+        rob.put_tcp2camera()
+        rob.mvr2z(-QRdist, vel=0.1)   # down (base -Z)
+        rob.grab()
+        time.sleep(1)
+        #rob.release()
+        rob.mvr2z(QRdist, vel=0.1)    # back up
+        time.sleep(1)
+        rob.mvr2z(-QRdist+0.02, vel=0.05)   # down (base -Z + 0.02)
+        rob.release()
+        rob.mvr2z(QRdist, vel=0.1)
+        print("Pick sequence done.")
+        print("Distance down to the object is {:.3f} m.".format(QRdist))
+    except Exception as ex:
+        print(f"Pick sequence failed: {ex}")
+
+
+def average_apriltag_pose(cam, at, camera_params, min_margin, N=10):
+    """Capture N frames and collect the AprilTag pose from each frame that has
+    exactly one valid detection. Returns (eulers, dists) lists (length <= N),
+    used for time-averaging the tag pose to reduce per-frame noise."""
+    eulers = []
+    dists = []
+    for _ in range(N):
+        try:
+            ret2, f2 = cam.capture()
+        except Exception:
+            continue
+        if not ret2 or f2 is None:
+            continue
+        if not isinstance(f2, np.ndarray):
+            f2 = np.array(f2)
+        g2 = cv2.cvtColor(f2, cv2.COLOR_RGB2GRAY)
+        dets = at.detect(g2, estimate_tag_pose=True,
+                         camera_params=camera_params,
+                         tag_size=cam.AT_physical_size)
+        dets = [d for d in dets
+                if d.hamming == 0 and d.decision_margin >= min_margin]
+        if len(dets) != 1 or dets[0].pose_R is None:
+            continue
+        try:
+            e, tvec, o = cal_AT2pose(dets[0])
+        except ValueError:
+            continue
+        if e is None:
+            continue
+        eulers.append(e)
+        dists.append(cam.getATdistance(dets[0]))
+    return eulers, dists
+
+
+def open_second_webcam(skip_index=None, max_index=5):
+    """Probe device indices 0..max_index and return the first webcam that opens
+    and delivers a frame, skipping skip_index (the robot's USB camera).
+
+    Returns (VideoCapture, index) or (None, None) if nothing usable is found.
+    """
+    for idx in range(max_index + 1):
+        if skip_index is not None and idx == skip_index:
+            continue
+        cap = cv2.VideoCapture(idx)
+        if not cap.isOpened():
+            cap.release()
+            continue
+        ret, _ = cap.read()
+        if not ret:
+            cap.release()
+            continue
+        print("Second webcam found at device index {}.".format(idx))
+        return cap, idx
+    print("No second webcam detected.")
+    return None, None
+
+
 def showcamera(rob, codetype = 0, obj_distance=0.15):
     # codetype ==1 for QR code.
     # obj_distance: distance between the gripper tip to the object. measure using rob.measureheight() function.
@@ -310,8 +394,28 @@ def showcamera(rob, codetype = 0, obj_distance=0.15):
                        quad_sigma=0.0,
                        refine_edges=1,
                        decode_sharpening=0.25,
-                       debug=0)    
-    while 1:    
+                       debug=0)
+    worker = None  # background thread for blocking robot actions
+    def dispatch(fn, *args, **kwargs):
+        # Run a blocking robot action off the display loop so the camera feed
+        # keeps updating. Ignore new actions while one is still running.
+        nonlocal worker
+        if worker is not None and worker.is_alive():
+            print("Busy: a robot action is still running.")
+            return
+        worker = Thread(target=fn, args=args, kwargs=kwargs, daemon=True)
+        worker.start()
+    # Auto-detect a second webcam and show it in its own window beside the
+    # robot camera. Skip the robot's own USB device so we don't grab it twice.
+    skip_idx = rob.camera.device if rob.camera.connectiontype == 'usb' else None
+    webcam, _webcam_idx = open_second_webcam(skip_index=skip_idx)
+    webcam_win = 'webcam'
+    webcam_placed = False
+    webcam_zoom = 1.0  # digital zoom factor for the webcam window ('+'/'-')
+    # This loop captures continuously; tell threaded robot actions to reuse the
+    # frames we grab here rather than capturing again (avoids a two-reader race).
+    rob.camera._running = True
+    while 1:
         # Capture
         ret, frame = rob.camera.capture()
         # Ensure frame is a writable NumPy array for OpenCV drawing functions.
@@ -431,6 +535,23 @@ def showcamera(rob, codetype = 0, obj_distance=0.15):
             #rob.camera.imgV = pilImage.shape[0]
             #rob.camera.camera_f = camera_f/default_imgH*rob.camera.imgH         
         cv2.imshow('frame', frame)
+        # Show the second webcam side-by-side in its own window.
+        if webcam is not None:
+            wret, wframe = webcam.read()
+            if wret:
+                if webcam_zoom > 1.0:
+                    # Digital zoom: crop the center 1/zoom of the frame and
+                    # scale it back up to the original size.
+                    wh, ww = wframe.shape[:2]
+                    cw, ch = int(ww / webcam_zoom), int(wh / webcam_zoom)
+                    x0, y0 = (ww - cw) // 2, (wh - ch) // 2
+                    wframe = cv2.resize(wframe[y0:y0+ch, x0:x0+cw], (ww, wh),
+                                        interpolation=cv2.INTER_LINEAR)
+                cv2.imshow(webcam_win, wframe)
+                if not webcam_placed:
+                    # Place the webcam window just to the right of the robot cam.
+                    cv2.moveWindow(webcam_win, w + 60, 0)
+                    webcam_placed = True
         #rob.camera.decode2QR()
         key = cv2.waitKey(20) & 0xFF
         if key == 48:  #0
@@ -458,57 +579,33 @@ def showcamera(rob, codetype = 0, obj_distance=0.15):
             if rob.camera.connectiontype == 'usb':
                 rob.camera.vidcap.set(cv2.CAP_PROP_FOCUS,650) #This sets the focus to a value of i
         if key == 105: #i
-            rob.move_toward_camera(0, north=0.025)
+            dispatch(rob.move_toward_camera, 0, north=0.025)
         if key == 106: #j
-            rob.move_toward_camera(0, north=0, east=-0.025)
+            dispatch(rob.move_toward_camera, 0, north=0, east=-0.025)
         if key == 107: #k
-            rob.move_toward_camera(0.02, north=0, east=0.0)
+            dispatch(rob.move_toward_camera, 0.02, north=0, east=0.0)
         if key == 108: #l
-            rob.move_toward_camera(0, north=0, east=0.025)
+            dispatch(rob.move_toward_camera, 0, north=0, east=0.025)
         if key == 109: #m
-            rob.move_toward_camera(0, north=-0.025, east=0.0)
+            dispatch(rob.move_toward_camera, 0, north=-0.025, east=0.0)
         if key == 111: #o
-            rob.move_toward_camera(-0.02, north=0, east=0.0)
+            dispatch(rob.move_toward_camera, -0.02, north=0, east=0.0)
         if key == 103: #g
-            # Pick sequence: move the TCP to the camera position, plunge down by
-            # the measured tag distance, grip, hold 5 s, release, and retract.
-            if not isinstance(QRdist, (int, float)) or QRdist <= 0:
-                print("No valid tag distance (QRdist). Point the camera at a tag first.")
-            else:
-                try:
-                    rob.release()
-                    QRdist = QRdist - 0.01
-                    print(f"Pick sequence: descending {QRdist:.3f} m to grip...")
-                    #rob.move_toward_camera(0, north=-0.01, east=0.0)
-                    rob.put_tcp2camera()
-                    rob.mvr2z(-QRdist, vel=0.1)   # down (base -Z)
-                    rob.grab()
-                    time.sleep(1)
-                    #rob.release()
-                    rob.mvr2z(QRdist, vel=0.1)    # back up
-                    time.sleep(1)
-                    rob.mvr2z(-QRdist+0.02, vel=0.05)   # down (base -Z + 0.02)
-                    rob.release()
-                    rob.mvr2z(QRdist, vel=0.1)
-                    print("Pick sequence done.")
-                    print("Distance down to the object is {:.3f} m.".format(QRdist))
-                except Exception as ex:
-                    print(f"Pick sequence failed: {ex}")
-        if key == 102: #f
-            rob.roll_around_camera(-10, obj_distance+0.18)
+            dispatch(run_pick_sequence, rob, QRdist)
+        #if key == 102: #f
+        #    rob.roll_around_camera(-10, obj_distance+0.18)
         if key == 114: #r
-            # Rotate the robot around the camera axis by the AprilTag's
-            # measured in-plane roll (euler[2]) to align to the tag.
-            if euler is not None:
-                print(f"Rotating around camera axis by {euler[2]:.2f} degrees...")
-                try:
-                    rob.rotate_around_Zaxis_camera(euler[2])
-                except Exception as ex:
-                    print(f"rotate_around_Zaxis_camera failed: {ex}")
-            else:
-                print("No AprilTag pose available. Point the camera at a tag first.")
+            dispatch(rob.rotate_around_Zaxis_camera, 5)
+        if key == 82: #R
+            dispatch(rob.rotate_around_Zaxis_camera, -5)
         if key == 101: #e
-            rob.rotate_around_Zaxis_camera(-10)
+            dispatch(rob.roll_around_camera, -10, QRdist)
+        if key == 69: #E
+            dispatch(rob.roll_around_camera, 10, QRdist)
+        if key == 119: #w
+            dispatch(rob.roll_around_camera, -10, QRdist, dir='x')
+        if key == 87: #W
+            dispatch(rob.roll_around_camera, 10, QRdist, dir='x')
         if key == 97: #a
             if rob.camera.connectiontype == 'usb':
                 rob.camera.vidcap.set(cv2.CAP_PROP_AUTOFOCUS,1)
@@ -518,18 +615,24 @@ def showcamera(rob, codetype = 0, obj_distance=0.15):
         if key == 115: #s
             if rob.camera.connectiontype == 'usb':
                 rob.camera.scanfocus()
+            else:
+                dispatch(search_apriltag_by_tilt, rob)
         if key == 104: #h
             print("Help:")
             print("  focal point change: 0, 1, 2, .. 7")
-            print("  focus mode: a(auto), x(manual), s(scan)")
+            print("  focus mode: a(auto), x(manual), s(scanfocus USB / search AprilTag by tilt for IP)")
             print("  move robot: i(north),j(west),k(toward),l(east),m(south),o(away)")
-            print("  rotate robot: e(-rZ),f(roll -), r(align rZ to tag)")
-            print("  camera face down: t or d")
-            print("  center camera on AprilTag: y")
-            print("  center QR: c")
+            print("  rotate around camera Z: r(+5), R(-5)")
+            print("  roll around camera (Y axis): e(-10), E(+10)")
+            print("  roll around camera (X axis): w(-10), W(+10)")
+            print("  put camera to TCP: d")
+            print("  put TCP to camera: u")
+            print("  center camera on AprilTag / QR: c")
+            print("  time-average AprilTag pose: t")
             print("  pick sequence (put tcp to camera, grip, retract): g")
-            print("  print QR code info: p")
-            print("  Measure distance : M")
+            print("  print QR/AprilTag info: p")
+            print("  measure distance: M")
+            print("  webcam zoom: + (in), - (out)")
             print("  exit: q or ESC")
         if key == 113: #q
             #print(QRcode)
@@ -552,30 +655,8 @@ def showcamera(rob, codetype = 0, obj_distance=0.15):
         if key == 116: #t
             ''' time average the AprilTag pose over 10 frames and print the average translation and rotation. '''
             N = 20
-            eulers = []
-            dists = []
-            for _ in range(N):
-                ret2, f2 = rob.camera.capture()
-                if not ret2:
-                    continue
-                if not isinstance(f2, np.ndarray):
-                    f2 = np.array(f2)
-                g2 = cv2.cvtColor(f2, cv2.COLOR_RGB2GRAY)
-                dets = at.detect(g2, estimate_tag_pose=True,
-                                 camera_params=[fx, fy, cx, cy],
-                                 tag_size=rob.camera.AT_physical_size)
-                dets = [d for d in dets
-                        if d.hamming == 0 and d.decision_margin >= AT_MIN_MARGIN]
-                if len(dets) != 1 or dets[0].pose_R is None:
-                    continue
-                try:
-                    e, tvec, o = cal_AT2pose(dets[0])
-                except ValueError:
-                    continue
-                if e is None:
-                    continue
-                eulers.append(e)
-                dists.append(rob.camera.getATdistance(dets[0]))
+            eulers, dists = average_apriltag_pose(
+                rob.camera, at, [fx, fy, cx, cy], AT_MIN_MARGIN, N=N)
             if len(eulers) == 0:
                 print("Time average: no valid AprilTag detections. Point the camera at a tag.")
             else:
@@ -585,36 +666,51 @@ def showcamera(rob, codetype = 0, obj_distance=0.15):
                 print(f"  rpy      = [{avg[0]:.2f}, {avg[1]:.2f}, {avg[2]:.2f}] deg")
                 print(f"  distance = {avgdist:.4f} m")
         if key == 100: #d
-            rob.put_camera2tcp()
+            dispatch(rob.put_camera2tcp)
+        if key == 117: #u
+            dispatch(rob.put_tcp2camera)
         if key == 121: #y
-            try:
-                print("Centering to AprilTag...")
-                dd = rob.center_camera2apriltag()
-            except Exception as ex:
-                print(f"orient2aprilTag failed: {ex}")
-                dd = None
+            pass
+        if key == 43 or key == 61: #'+' / '=' : zoom the webcam window in
+            if webcam is not None:
+                webcam_zoom = min(webcam_zoom + 0.5, 8.0)
+                print(f"Webcam zoom: {webcam_zoom:.1f}x")
+        if key == 45: #'-' : zoom the webcam window out
+            if webcam is not None:
+                webcam_zoom = max(webcam_zoom - 0.5, 1.0)
+                print(f"Webcam zoom: {webcam_zoom:.1f}x")
         if key == 77: #M
-            t = Thread(target=run_measuredistance, args=(rob,))
-            t.start()
+            dispatch(run_measuredistance, rob)
         if key == 99: #c
-            #rob.bring_QR_to_camera_center()
-            if len(QRpos)>0:
+            if euler is not None:
+                # An AprilTag is visible: center the camera on the tag.
+                def _center_apriltag(rob):
+                    try:
+                        print("Centering to AprilTag...")
+                        rob.center_camera2apriltag()
+                    except Exception as ex:
+                        print(f"center_camera2apriltag failed: {ex}")
+                dispatch(_center_apriltag, rob)
+            elif len(QRpos) > 0:
+                # A QR code is visible: nudge it to the center, then run centering.
                 dx = w/2-QRpos[0]
                 dy = h/2-QRpos[1]
                 dX = -dx/rob.camera.camera_f*QRdist
                 dY = dy/rob.camera.camera_f*QRdist
-                rob.move_toward_camera(distance=0, north=dY, east=dX, acc=0.5, vel=0.5)
-            #if not isambient:
-                t = Thread(target=run_centering, args=(rob,))
-            #else:
-            #    t = Thread(target=run_centering_1QR, args=(rob,))
-            t.start()
-            #t.join()
+                def _center_qr(rob, dX, dY):
+                    rob.move_toward_camera(distance=0, north=dY, east=dX, acc=0.5, vel=0.5)
+                    run_centering(rob)
+                dispatch(_center_qr, rob, dX, dY)
+            else:
+                print("Nothing to center on. Point the camera at an AprilTag or QR code.")
         if key == 27:
             break
 #        foc = rob.camera.get_foc()
     #    print("The current focus value is: {}".format(foc))
         time.sleep(0.1)
+    rob.camera._running = False
+    if webcam is not None:
+        webcam.release()
     cv2.destroyAllWindows()
 #    rob.camera.stop()
     #t.join()
@@ -723,33 +819,8 @@ def showcamera_ip(ip=None, name='UR5'):
             break
         if key == ord('t'):
             N = 10
-            eulers = []
-            dists = []
-            for _ in range(N):
-                try:
-                    ret2, f2 = cam.capture()
-                except Exception:
-                    continue
-                if not ret2 or f2 is None:
-                    continue
-                if not isinstance(f2, np.ndarray):
-                    f2 = np.array(f2)
-                g2 = cv2.cvtColor(f2, cv2.COLOR_RGB2GRAY)
-                dets = at.detect(g2, estimate_tag_pose=True,
-                                 camera_params=[fx, fy, cx, cy],
-                                 tag_size=cam.AT_physical_size)
-                dets = [d for d in dets
-                        if d.hamming == 0 and d.decision_margin >= AT_MIN_MARGIN]
-                if len(dets) != 1 or dets[0].pose_R is None:
-                    continue
-                try:
-                    e, tvec, o = cal_AT2pose(dets[0])
-                except ValueError:
-                    continue
-                if e is None:
-                    continue
-                eulers.append(e)
-                dists.append(cam.getATdistance(dets[0]))
+            eulers, dists = average_apriltag_pose(
+                cam, at, [fx, fy, cx, cy], AT_MIN_MARGIN, N=N)
             if len(eulers) == 0:
                 print("Time average: no valid AprilTag detections.")
             else:
@@ -765,43 +836,60 @@ def showcamera_ip(ip=None, name='UR5'):
         time.sleep(0.1)
     cv2.destroyAllWindows()
 
-def _detect_apriltag(rob, settle=0.3):
+def _detect_apriltag(rob, settle=5):
     """Capture one frame and return the AprilTag detection (or None)."""
-    time.sleep(settle)              # let the image settle after a move
-    rob.camera.capture()
-    return rob.camera.decodeAT()    # single detection or None
+    t0 = time.time()
+    r = None
+    while True:
+        # When a live display loop (showcamera) is already capturing, reuse its
+        # latest frame instead of grabbing our own.
+        if not rob.camera._running:
+            rob.camera.capture()
+        if rob.camera.decodeAT() is not None:       # populates rob.camera.decoded
+            r = rob.camera.decoded
+            break
+        time.sleep(0.1)  # Wait a bit before trying again
+        if time.time() - t0 > settle:
+            print("No AprilTag detected after waiting {:.1f} s.".format(settle))
+            return None
+    return r
 
-def _facedown_keeping_tag(rob, step=5, max_steps=24):
-    """Tilt the camera toward straight-down (-Z) in small steps, recentering
-    the tag after each step so it stays in view. Returns True if the camera
-    reached face-down, False if the tag was lost first."""
-    def camz():
-        # z-component of the camera viewing vector; -1 means pointing down.
-        return rob.get_camera_vector()[0][2]
-    # Probe once to learn which tilt sign drives the camera toward -Z.
-    z0 = camz()
-    rob.rotx(step, coordinate='camera')
-    if camz() > z0:
-        direction = -1
-        rob.rotx(-step, coordinate='camera')   # undo the probe
-    else:
-        direction = 1
-    if _detect_apriltag(rob) is None:
-        print("Lost the tag while facing down; stopping tilt.")
+def roll_around_tag(rob, step=5, tol=1e-2, max_steps=24):
+    """Tilt the camera toward face-down in steps of at most ``step`` degrees,
+    pivoting about the tag so it stays centered, until the camera faces down
+    (within ``tol`` radians) or the tag is lost / ``max_steps`` is reached."""
+    r = _detect_apriltag(rob)
+    if r is None:
+        print("No AprilTag in view; cannot roll around the tag.")
         return False
-    rob.center_camera2apriltag()
+    distance = rob.camera.getATdistance(r)
+    newtcp = list(rob.camtcp)
+    newtcp[2] = distance
+    rob.set_tcp(newtcp)
+    step_in_radians = step / 180 * math.pi
+    target_rotvec = np.array([0, -math.pi, 0])  # face-down rotation vector
     for _ in range(max_steps):
-        if camz() <= -0.999:
+        pose = rob.get_pose()
+        v = pose.orient.get_rotation_vector().array
+        v[1] = -1*abs(v[1])  # ensure the camera is facing down (negative Y)
+        diff_rotvec = target_rotvec - v
+        if np.linalg.norm(diff_rotvec) < tol:
+            print("Camera is face-down.")
             return True
-        rob.rotx(direction * step, coordinate='camera')
-        if _detect_apriltag(rob) is None:
-            print("Lost the tag while facing down; stopping tilt.")
-            return False
-        rob.center_camera2apriltag()
-    return camz() <= -0.999
+        # Clamp the remaining rotation so each step moves at most step_in_radians
+        # per component toward the target (and never overshoots).
+        dr = np.clip(diff_rotvec, -step_in_radians, step_in_radians)
+        print("Camera not yet face-down; taking a step toward it ..."   )
+        if abs(dr[0])<step_in_radians and abs(dr[1])<step_in_radians and abs(dr[2])<step_in_radians:
+            dr = np.array([0,0,0])
+        pose.orient = m3d.Orientation(target_rotvec - dr)  # new orientation after the step
+        rob.set_pose(pose, acc=0.1, vel=0.1, wait=True)
+        rob.center_camera2apriltag()  # clean up any residual offset
+    print("Reached max_steps before the camera faced down.")
+    return False
 
-def search_apriltag_by_tilt(rob, ref_pos=(-0.3, -0.3, 0.4),
-                            tilt_range=30, tilt_step=15):
+def search_apriltag_by_tilt(rob, ref_pos=(-0.4, -0.2, 0.5),
+                            tilt_range=10, tilt_step=5):
     """Search for an AprilTag by tilting the camera at a reference position.
 
     Sequence:
@@ -816,17 +904,17 @@ def search_apriltag_by_tilt(rob, ref_pos=(-0.3, -0.3, 0.4),
     """
     # 1. Move to the reference position with the current (gripper) TCP.
     print(f"Moving to reference position {list(ref_pos)} ...")
-
-    rob.moveto(list(ref_pos))
+    rob.set_tcp(rob.tcp)
     rob.set_orientation()  # keep the current orientation
+    rob.moveto(list(ref_pos))
     rob.put_camera2tcp()  # ensure the camera is in the TCP frame
     # 2. Switch to the camera TCP so rotations pivot about the camera point.
-    rob.set_tcp(rob.camtcp)
+    #rob.set_tcp(rob.camtcp)
     found = None
     try:
         base = rob.get_pose()               # camera-TCP pose at the reference
         base_pos = base.get_pos()
-        angles = list(range(-tilt_range, tilt_range + 1, tilt_step))
+        angles = list(range(-tilt_range, tilt_range+1, tilt_step))
         # Order the grid by increasing tilt magnitude, so 0,0 is tried first.
         grid = sorted(((ax, ay) for ax in angles for ay in angles),
                       key=lambda a: a[0] ** 2 + a[1] ** 2)
@@ -836,27 +924,35 @@ def search_apriltag_by_tilt(rob, ref_pos=(-0.3, -0.3, 0.4),
             t.orient.rotate_yt(ay / 180 * math.pi)
             t.set_pos(base_pos)             # pivot in place about the camera
             rob.set_pose(t, acc=0.2, vel=0.3, wait=True)
-            time.sleep(5)                  # let the image settle after a move
+            #time.sleep(5)                  # let the image settle after a move
             if _detect_apriltag(rob) is not None:
                 print(f"AprilTag found at tilt (x={ax}, y={ay}) deg.")
                 found = (ax, ay)
                 break
-    finally:
-        rob.set_tcp(rob.tcp)                # always restore the gripper TCP
+    except Exception as ex:
+        rob.set_tcp(rob.tcp)  # restore the original TCP
+        print(f"search_apriltag_by_tilt failed: {ex}")
     if found is None:
         print("No AprilTag found within the tilt search range.")
         return False
+    rob.center_camera2apriltag()
     # 3./4. Face the camera down keeping the tag in view, then fine-center.
     print("Tipping camera face-down while keeping the tag in view ...")
-    _facedown_keeping_tag(rob)
-    rob.orient2aprilTag()
-    rob.set_orientation()
-    rob.put_camera2tcp()
-    rob.mvr2z(0.1)
+    roll_around_tag(rob)
+    print("Finally centering the camera on the AprilTag ...")
     rob.center_camera2apriltag()
+    rob.rotate_around_Zaxis_camera(rob.camera.AT_euler[2])  # refresh the camera pose
     rob.center_camera2apriltag()
-    rob.center_camera2apriltag()
-    rob.center_camera2apriltag()
+
+    # Descend in 5 cm steps until the tag is ~0.2 m from the camera.
+    r = _detect_apriltag(rob)
+    while r is not None and rob.camera.QRdistance > 0.2:
+        rob.mvr2z(-0.05)
+        r = _detect_apriltag(rob)
+    # Re-align the camera's Z rotation to the tag after descending.
+    if r is not None:
+        rob.rotate_around_Zaxis_camera(rob.camera.AT_euler[2])
+
     return True
 
 def bring_hand_to_camera_center(rob, box, center, acc=0.1, vel=0.1):

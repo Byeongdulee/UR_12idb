@@ -5,9 +5,10 @@ import io
 import math
 import time
 import cv2
-import math3d as m3d
+from common import m3d  # centralized math3d (4.x compat applied in common.m3d)
 import threading
 from scipy.spatial.transform import Rotation
+
 ISQR = False
 ISAPRILTAGS = True
 
@@ -145,6 +146,7 @@ class camera(object):
         self.QR_physical_size = QRsavSize
         self.AT_physical_size = apriltagsize
         self.intrinsic_mtx = []
+        self.image = None
         self._running = False
         if len(self.IP) == 0:
             vidcap = cv2.VideoCapture(self.device)
@@ -181,7 +183,7 @@ class camera(object):
     def focus(self, val):
         if len(self.IP)>0:
             raise NoUSBCameraException
-        #  #Not sure what max and min range are for the camera focus, 
+        #  #Not sure what max and min range are for the camera focus,
         # I found that a value of 450 works well at a 1 ft range under current conditions
         if len(self.IP) == 0:
             self.vidcap.set(cv2.CAP_PROP_AUTOFOCUS,0)
@@ -203,7 +205,6 @@ class camera(object):
 
     def capture(self):
         resp=None
-        self.image = None
         if len(self.IP)>0:
             #Try to get camera image with provided robot IP
             try:
@@ -226,10 +227,14 @@ class camera(object):
             ret, pilImage = self.vidcap.read()
             if not ret:
                 print("Fail to capture camera.")
-        self.image = pilImage
-        self.imgH = pilImage.shape[1]
-        self.imgV = pilImage.shape[0]
-        self.camera_f = camera_f/default_imgH*self.imgH
+        # Only publish a valid frame. Never blank self.image mid-capture, so a
+        # concurrent reader (e.g. a threaded robot move during showcamera) never
+        # catches self.image as None. On failure, keep the previous frame.
+        if ret and pilImage is not None:
+            self.image = pilImage
+            self.imgH = pilImage.shape[1]
+            self.imgV = pilImage.shape[0]
+            self.camera_f = camera_f/default_imgH*self.imgH
         return ret, pilImage
 
     def decodeAT(self):
@@ -247,14 +252,16 @@ class camera(object):
         if len(r)==1:
             r = r[0]
             pos = np.linalg.inv(K@r.homography*r.pose_t[2])@np.array([r.center[0], r.center[1], 1])
-#            print(r.pose_t.transpose())
-#            print(r.homography)
-#            print(pos)
             self.getATdistance(r)
         else:
             r = None
             pos = None
+            return None
         self.decoded = r
+        euler, t, pose = cal_AT2pose(r)
+        self.AT_euler = euler
+        self.AT_translation = t
+        self.AT_pose = pose
         return r
   
     def getATdistance(self, r):

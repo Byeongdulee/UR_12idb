@@ -14,11 +14,15 @@ from urx import robot, urrobot, robotiq_two_finger_gripper
 from urxe import ursecmon, urrtmon
 #import urmon_parser
 #import urrtde
-import math3d as m3d
 import logging
 import time
 import numpy as np
-from robUR import SafetyMode
+# Import the enum from the dependency-free leaf module, not robUR, to avoid a
+# cyclic/duplicate robUR load (robUR -> urxe -> urxe.robot -> robUR).
+from common.urmodes import SafetyMode
+# math3d (with 4.x compat applied) is centralized in common.m3d — use it instead
+# of `import math3d` so the compat shims live in one place.
+from common import m3d
 
 class URRobot(urrobot.URRobot):
 
@@ -46,7 +50,13 @@ class URRobot(urrobot.URRobot):
             self.rtmon.start()
             self.rtmon.set_csys(self.csys)
         if use_rtde:
-            import rtde_receive as rr
+            try:
+                import rtde_receive as rr  # type: ignore  # optional 'ur_rtde' package
+            except ImportError as e:
+                raise ImportError(
+                    "use_rtde=True requires the 'ur_rtde' package "
+                    "(pip install ur_rtde)."
+                ) from e
             self.rtde = rr.RTDEReceiveInterface(host)
         # precision of joint movem used to wait for move completion
         # the value must be conservative! otherwise we may wait forever
@@ -135,6 +145,10 @@ class RobotiqScript(robotiq_two_finger_gripper.RobotiqScript):
         self.add_line_to_program(msg)
         self.add_line_to_program('textmsg("gripper=", rq_pos)')
 
+#    def _set_focus(self, value):
+#        self._sync()
+#        msg = f"rq_set_focus({int(value)})"
+#        self.add_line_to_program(msg)
 
 SOCKET_HOST = "127.0.0.1"
 SOCKET_PORT = 63352
@@ -312,3 +326,22 @@ class RobotiqGripper(object):
 
     def close_gripper(self):
         self.gripper_action(255)
+
+    # # camera functions
+    # def focus(self, value):
+    #     """
+    #     Activate the gripper to a given value from 0 to 255
+
+    #     0 is open
+    #     255 is closed
+    #     """
+    #     urscript = self._get_urscript()
+
+    #     # Move to the position
+    #     sleep = 2.0
+    #     urscript._set_focus(value)
+    #     urscript._sleep(sleep)
+
+    #     # Send the script
+    #     print(urscript())
+    #     self.robot.send_program(urscript())

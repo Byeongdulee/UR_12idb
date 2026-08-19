@@ -1,0 +1,1186 @@
+def autocalib():
+
+  # Program states
+  STARTED                 = <%state_started_value%>
+  DONE_ERROR              = <%state_done_error_value%>
+  DONE_WARNING            = <%state_done_warning_value%>
+  DONE_SUCCESS            = <%state_done_success_value%>
+  AUTO_FOCUS_IN_PROGRESS  = <%state_auto_focus_in_progress_value%>
+  AUTO_FOCUS_DONE         = <%state_auto_focus_done_value%>
+  DELTA_X_IN_PROGRESS     = <%state_delta_x_in_progress_value%>
+  DELTA_Y_IN_PROGRESS     = <%state_delta_y_in_progress_value%>
+  DELTA_Z_IN_PROGRESS     = <%state_delta_z_in_progress_value%>
+  DELTA_RX_IN_PROGRESS    = <%state_delta_rx_in_progress_value%>
+  DELTA_RY_IN_PROGRESS    = <%state_delta_ry_in_progress_value%>
+  DELTA_RZ_IN_PROGRESS    = <%state_delta_rz_in_progress_value%>
+  DELTA_X_DONE            = <%state_delta_x_done_value%>
+  DELTA_Y_DONE            = <%state_delta_y_done_value%>
+  DELTA_Z_DONE            = <%state_delta_z_done_value%>
+  DELTA_RX_DONE           = <%state_delta_rx_done_value%>
+  DELTA_RY_DONE           = <%state_delta_ry_done_value%>
+  DELTA_RZ_DONE           = <%state_delta_rz_done_value%>
+  CENTERING_IN_PROGRESS   = <%state_centering_in_progress_value%>
+  CENTERING_NEW_STEP      = <%state_centering_new_step_value%>
+  CENTERING_DONE          = <%state_centering_done_value%>
+  CALIBRATING_IN_PROGRESS = <%state_calibrating_value%>
+  NEW_CALIBRATION_POSE    = <%state_calibration_pose_value%>
+  VALIDATION_IN_PROGRESS  = <%state_validating_value%>
+  NEW_VALIDATION_POSE     = <%state_validation_pose_value%>
+
+  # Error codes
+  ERROR_BOARD_LOST = 1 #"Calibration board lost. Replace robot or board and try again."
+  ERROR_POSE_UNREACHABLE = 2 #"Robot near unreachable poses. Replace robot and try again."
+  ERROR_ROBOT_NEAR_SAFETY_LIMIT = 3 #"Robot near safety limits. Replace robot and try again."
+  ERROR_JOINT_NEAR_SAFETY_LIMIT = 4 #"Joints positions near safety limits. Replace robot and try again."
+  ERROR_SERVOING_INIT_FAILED = 5 #"Visual servoing initialization failed. Replace robot or board and try again."
+  ERROR_SERVOING_FAILED = 6 #"Visual servoing failed. Replace robot or grid and try again."
+  ERROR_SERVOING_NEAR_SAFETY_LIMITS = 7 #"Robot near safety limits. Move board, center camera on board and try again."
+  ERROR_TARGET_TOO_FAR = 8 #"Too far from starting position\nReplace grid and retry"
+  ERROR_NOT_ENOUGH_POSES = 9 #"Not enough calibration poses reachables. Move board and try again."
+  ERROR_GRID_NOT_FOUND = 10 #"Wrong Calibration Board for this robot model. Please change the Board."
+  ERROR_GRID_UNKNOWN = 11 #"Wrong Calibration Board for this robot model. Please change the Board."
+  ERROR_GRID_NOT_SMALL_ON_UR3 = 12 #"Wrong Calibration Board for this robot model. Please change the Board."
+  ERROR_GRID_NOT_STANDARD_ON_UR5 = 13 #"Wrong Calibration Board for this robot model. Please change the Board."
+  ERROR_GRID_NOT_STANDARD_ON_UR10 = 14 #"Wrong Calibration Board for this robot model. Please change the Board."
+  WARNING_CALIBRATION_THRESHOLD = 15 #"Calibration does not respect the acceptable precision threshold. You may re-calibrate to get better results."
+  ERROR_VALIDATION_FAILED = 16 #"The validation ending request failed. Please try to recalibrate again."
+  ERROR_CENTERING_FAILED = 17 #"The centering failed. Please try to recalibrate again."
+  ERROR_CALIBRATION_FAILED = 18 #"The calibration failed. Please try to recalibrate again."
+  ERROR_DIVISION_BY_ZERO = 19 #"The calibration was stopped because an illegal divsion by zero occurred."
+  ERROR_GRID_NOT_STANDARD_ON_UR16 = 20 #"Calibration board incompatible with robot model. Please change the board."
+
+  # Maximum retries
+  RETRY_MAX = 3
+
+  # Find grid results
+  GRID_NOT_FOUND = 0
+  GRID_STANDARD = 1
+  GRID_SMALL = 2
+  GRID_UNKNOWN = 3
+  GRID_FIDUCIAL = 4
+  GRID_TYPE = <%calibration_grid_type%>
+
+  # Robot types
+  ROBOT_TYPE_UR5 = 1
+  ROBOT_TYPE_UR10 = 2
+  ROBOT_TYPE_UR3 = 3
+  ROBOT_TYPE_UR16 = 4
+
+  # Configurations options
+  SKIP_VISUAL_SERVOING = <%skip_visual_servoing%>
+  CALIBRATION_SEED = <%calibration_seed%>
+
+  # Invalid pose and invalid joint list
+  INVALID_POSE = p[999,999,999,999,999,999]
+  INVALID_JOINT_LIST = [999,999,999,999,999,999]
+
+  <%function get_T_in_base_from_flange%>
+  <%function is_joint_positions_within_safety_limits%>
+
+  T_camera_in_flange = <%pose camera_in_flange%>
+
+  last_position_joint = <%joint last_position%>
+
+  T_camera_in_base = get_T_in_base_from_flange(T_camera_in_flange)
+  T_tcp_in_base = get_actual_tcp_pose()
+  T_camera_in_tcp = pose_trans(pose_inv(T_tcp_in_base), T_camera_in_base)
+  T_tcp_in_camera = pose_inv(T_camera_in_tcp)
+
+  def poseToList(p):
+      return [p[0], p[1], p[2], p[3], p[4], p[5]]
+  end
+
+  def listToPose(l):
+      return p[l[0], l[1], l[2], l[3], l[4], l[5]]
+  end
+
+  def serveratdelta(state):#{{{
+    if state==0:
+      return vision_server.atdeltatx()
+    elif state==1:
+      return vision_server.atdeltaty()
+    elif state==2:
+      return vision_server.atdeltatz()
+    elif state==3:
+      return vision_server.atdeltarx()
+    elif state==4:
+      return vision_server.atdeltary()
+    elif state==5:
+      return vision_server.atdeltarz()
+    end
+
+    #sinon
+    return False
+  end#}}}
+
+  def monitorsetprogramstate(state): #{{{
+    if state==0:
+      monitor.setProgramState(DELTA_X_DONE)
+    elif state==1:
+      monitor.setProgramState(DELTA_Y_DONE)
+    elif state==2:
+      monitor.setProgramState(DELTA_Z_DONE)
+    elif state==3:
+      monitor.setProgramState(DELTA_RX_DONE)
+    elif state==4:
+      monitor.setProgramState(DELTA_RY_DONE)
+    elif state==5:
+      monitor.setProgramState(DELTA_RZ_DONE)
+    end
+  end#}}}
+
+  def monitorsetdeltaprogressstate(state): #{{{
+    if state==0:
+      monitor.setProgramState(DELTA_X_IN_PROGRESS)
+    elif state==1:
+      monitor.setProgramState(DELTA_Y_IN_PROGRESS)
+    elif state==2:
+      monitor.setProgramState(DELTA_Z_IN_PROGRESS)
+    elif state==3:
+      monitor.setProgramState(DELTA_RX_IN_PROGRESS)
+    elif state==4:
+      monitor.setProgramState(DELTA_RY_IN_PROGRESS)
+    elif state==5:
+      monitor.setProgramState(DELTA_RZ_IN_PROGRESS)
+    end
+  end #}}}
+
+  def savate(p1, p2, j1, j2):#{{{
+
+    #calculer le deplacement articulaire maximale pour empecher les savates
+    if linalg.max(linalg.abs(linalg.substract(j1, j2))) > d2r(180):
+      textmsg("Maximum allowed joint amplitude exceeded")
+      return True
+    end
+
+    #calculer le path length pour empecher les savates
+    linearPathLength = pose_dist(p1, p2)
+    jointPathLength = rq_xmlrpc_services.getpathlength(j1, j2)
+    if jointPathLength > (2 * linearPathLength):
+        textmsg("Maximal linear path length exceeded")
+        return True
+    end
+
+    return False
+
+  end#}}}
+
+    #-------------------------
+    # Convert a pose to a list
+    #-------------------------
+    def rq_pose_to_list(pose):
+        return [pose[0],pose[1],pose[2],pose[3],pose[4],pose[5]]
+    end
+
+    #-------------------------
+    # Convert a list to a pose
+    #-------------------------
+    def rq_list_to_pose(list):
+        assert(get_list_length(list) == 6)
+        return p[list[0],list[1],list[2],list[3],list[4],list[5]]
+    end
+
+    #----------------------------------------------------------------
+    # Define a function for computation of valid ik calibration poses
+    # Generate using rq_xmlrpc_services.doesinversekinexist
+    # then validate with the robot using is_within_safety_limits
+    #----------------------------------------------------------------
+    def signed_floor(signed):
+        if signed < 0:
+            return ceil(signed)
+        end
+        return floor(signed)
+    end
+    def modulus(n,d):
+        eps = 0.000001
+        if(norm(d) < eps):
+            textmsg("Invalid division by zero in function modulus, result is undefined")
+            monitor.setProgramState(DONE_ERROR, ERROR_DIVISION_BY_ZERO)
+            return n
+        else:
+            m = signed_floor(n/d)
+            return m
+        end
+    end
+    def mod(n,d):
+        m = modulus(n,d)
+        r = n - m*d
+        return r
+    end
+    def rq_align_ik(joints,qnear):
+        pi = d2r(180)
+        pi2 = 2*pi
+        n = length(joints)
+        while n > 0:
+            n = n-1
+            q1 = joints[n]
+            q2 = qnear[n]
+            m1 = modulus(q1,pi2)
+            m2 = modulus(q2,pi2)
+            d = m1-m2
+            if d != 0:
+                textmsg("Joint value aligned")
+                q1n = q1-(d*pi2)
+                delta = q1n-q2
+                if norm(delta) > pi:
+                    textmsg("Joint value reoriented")
+                    if delta > 0:
+                        q1n = q1n-pi2
+                    else:
+                        q1n = pi2+q1n
+                    end
+                end
+                joints[n] = q1n
+            end
+        end
+        return joints
+    end
+    def rq_normalize_ik(joints,qnear):
+        pi2 = d2r(360)
+        n = length(joints)
+        while n > 0:
+            n = n-1
+            q = joints[n]
+            if q > 0:
+                joints[n] = mod(q,pi2)
+            else:
+                joints[n] = mod(q,-pi2)
+            end
+        end
+        return joints
+    end
+
+    def get_rq_valid_ik_joints(pose,qnear,fail_on_error):
+
+        if not is_within_safety_limits(pose):
+            textmsg("The pose is outside the safety limits")
+            if fail_on_error:
+                monitor.setProgramState(DONE_ERROR, ERROR_POSE_UNREACHABLE)
+            end
+            return INVALID_JOINT_LIST
+        end
+
+        if not rq_xmlrpc_services.doesinversekinexist(pose):
+            textmsg("The inverse kinematics of the pose do not exist")
+            if fail_on_error:
+                monitor.setProgramState(DONE_ERROR, ERROR_POSE_UNREACHABLE)
+            end
+            return INVALID_JOINT_LIST
+        end
+
+        joints = rq_xmlrpc_services.getinversekin(pose,qnear)
+        joints = rq_align_ik(joints,qnear)
+
+        if not is_within_safety_limits(joints):
+            textmsg("The joints are outside the safety limits")
+            if fail_on_error:
+                monitor.setProgramState(DONE_ERROR, ERROR_ROBOT_NEAR_SAFETY_LIMIT)
+            end
+            return INVALID_JOINT_LIST
+        end
+        return rq_pose_to_list(joints)
+    end
+
+    #----------------------------------------------------------------
+    # Check if a pose (joint configuration) is valid
+    #----------------------------------------------------------------
+    def rq_are_joints_valid_list(joint_list):
+        #return (get_list_length(joint_list) == 6)
+        return not joint_list == INVALID_JOINT_LIST
+    end
+
+    #----------------------------------------------------------------
+    # Check for collision detection
+    #----------------------------------------------------------------
+    def rq_is_self_collision(selfcollisioncontextid,pose_joints):
+        return rq_xmlrpc_services.collided(selfcollisioncontextid, pose_joints)
+    end
+
+    #----------------------------------------------------------------
+    # Check for camera collision detection
+    #----------------------------------------------------------------
+    def rq_is_camera_collision(cameracollisioncontextid, vertices, triangles, pose_joints):
+        camerafieldofviewid = rq_xmlrpc_services.registercollisionobject(cameracollisioncontextid, vertices, triangles, p[0,0,0,0,0,0], 0)
+        cameracollided = rq_xmlrpc_services.collided(cameracollisioncontextid, pose_joints)
+        rq_xmlrpc_services.removecollisionobject(cameracollisioncontextid, camerafieldofviewid)
+        return cameracollided
+    end
+
+    #----------------------------------------------------------------
+    # Check if a pose p[...] is valid
+    # Checks is the pose is within safety limits and self-collision free
+    #----------------------------------------------------------------
+    def rq_is_pose_valid_(joint_config,fail_on_error):
+
+        if not rq_are_joints_valid_list(joint_config):
+            textmsg("The pose is invalid")
+            return False
+        end
+
+        if rq_is_self_collision(selfcollisioncontextid, joint_config):
+            textmsg("Self-collision detected at joint position: ", joint_config)
+            if fail_on_error:
+                monitor.setProgramState(DONE_ERROR, ERROR_POSE_UNREACHABLE)
+            end
+            return False
+        end
+
+        return True
+    end
+
+    #----------------------------------------------------------------
+    # Check if a pose p[...] is valid
+    # Checks is the pose is within safety limits and
+    # camera-collision and savate free
+    #----------------------------------------------------------------
+    def rq_is_pose_valid(tcp_pose,joint_config,qnear,cam_pose,cam_vertices,cam_triangles,prev_tcp_pose,prev_joint_config,fail_on_error):
+
+        if not rq_is_pose_valid_(joint_config,fail_on_error):
+            return False
+        end
+
+        cam_vertices[0] = cam_pose
+
+        if rq_is_camera_collision(cameracollisioncontextid, cam_vertices, cam_triangles, joint_config):
+            textmsg("Camera-collision detected at joint position: ", joint_config)
+            if fail_on_error:
+                monitor.setProgramState(DONE_ERROR, ERROR_POSE_UNREACHABLE)
+            end
+            return False
+        end
+
+        if savate(prev_tcp_pose, tcp_pose, prev_joint_config, joint_config):
+            textmsg("Savate detected")
+            if fail_on_error:
+                monitor.setProgramState(DONE_ERROR, ERROR_POSE_UNREACHABLE)
+            end
+            return False
+        end
+
+        return True
+    end
+
+    #----------------------------------------------------------------
+    # Check if a list of poses is valid
+    # Checks if the pose is within safety limits and collision free
+    # Calls rq_is_pose_valid on each one
+    #----------------------------------------------------------------
+    def rq_are_poses_valid(tcp_pose_list,joint_config_list,qnear,cam_pose_list,cam_vertices,cam_triangles,prev_tcp_pose_list,prev_joint_config_list):
+        i=0
+        while i < get_list_length(tcp_pose_list):
+            tcp_pose = tcp_pose_list[i]
+            joint_config = joint_config_list[i]
+            cam_pose = cam_pose_list[i]
+            prev_tcp_pose = prev_tcp_pose_list[i]
+            prev_joint_config = prev_joint_config_list[i]
+            if not rq_is_pose_valid(tcp_pose,joint_config,qnear,cam_pose,cam_vertices,cam_triangles,prev_tcp_pose,prev_joint_config):
+                return False
+            end
+            i=i+1
+        end
+        return True
+    end
+
+  def initvisualservoing(): #{{{
+
+    textmsg("initvisualservoing")
+
+    deltas=[0.02,0.02,0.02,0.04,0.04,0.04]
+
+    positive_displacement_joint_positions = linalg.list(6, p[0,0,0,0,0,0])
+    negative_displacement_joint_positions = linalg.list(6, p[0,0,0,0,0,0])
+
+    textmsg("beginservoinit")
+    retries=0
+    succeed=vision_server.beginservoinit()
+
+    while not succeed and retries < RETRY_MAX:
+      retries=retries+1
+      sleep(1.0)
+      succeed=vision_server.beginservoinit()
+    end
+
+    if not succeed:
+      monitor.setProgramState(DONE_ERROR, ERROR_SERVOING_INIT_FAILED)
+      return False
+    end
+
+    monitor.setProgramState(AUTO_FOCUS_IN_PROGRESS)
+
+    textmsg("atinitialpos")
+    retries=0
+    succeed=vision_server.atinitialpos()
+
+    while not succeed and retries < RETRY_MAX:
+      retries=retries+1
+      sleep(1.0)
+      succeed=vision_server.atinitialpos()
+    end
+
+    if not succeed:
+      monitor.setProgramState(DONE_ERROR, ERROR_BOARD_LOST)
+      return False
+    end
+
+    monitor.setProgramState(AUTO_FOCUS_DONE)
+
+    T_camera_in_base = get_T_in_base_from_flange(T_camera_in_flange)
+
+    initpose = T_camera_in_base
+    joint_initpose = get_actual_joint_positions()
+
+    positive_displacement_tcp_poses = positive_displacement_joint_positions
+    negative_displacement_tcp_poses = negative_displacement_joint_positions
+
+
+    #calcul des poses de tcp
+    textmsg("calcul des poses")
+    i=0
+    while i<6:
+      textmsg(i)
+      deltap=p[0,0,0,0,0,0]
+      deltap[i]=deltas[i]
+      camera_pose_in_base = pose_trans(initpose, deltap)
+      positive_displacement_tcp_poses[i] = pose_trans(camera_pose_in_base, T_tcp_in_camera)
+      deltap[i]=-deltas[i]
+      camera_pose_in_base = pose_trans(initpose, deltap)
+      negative_displacement_tcp_poses[i] = pose_trans(camera_pose_in_base, T_tcp_in_camera)
+      i=i+1
+    end
+
+
+    # Verify that poses are within safety limits
+    textmsg("Verify that delta poses are reachable")
+    i=0
+    while i<6:
+      textmsg("delta ", i)
+
+      fail_on_error = True
+      pos_disp_joint_config = get_rq_valid_ik_joints(positive_displacement_tcp_poses[i],joint_initpose,fail_on_error)
+      neg_disp_joint_config = get_rq_valid_ik_joints(negative_displacement_tcp_poses[i],joint_initpose,fail_on_error)
+      if not rq_is_pose_valid_(pos_disp_joint_config,fail_on_error) or not rq_is_pose_valid_(neg_disp_joint_config,fail_on_error):
+          textmsg("Invalid delta pose")
+          return False
+      end
+      positive_displacement_joint_positions[i] = listToPose(pos_disp_joint_config)
+      negative_displacement_joint_positions[i] = listToPose(neg_disp_joint_config)
+
+      i = i+1
+    end
+
+    textmsg("debut des deplacements")
+    #on effectue les deplacement pour preparer le visualservoing
+    i=0
+    while i<6:
+      monitorsetdeltaprogressstate(i)
+      succeed = False
+
+      if not savate(get_actual_tcp_pose(), positive_displacement_tcp_poses[i], get_actual_joint_positions(), poseToList(positive_displacement_joint_positions[i])):
+
+        movej(poseToList(positive_displacement_joint_positions[i]), a=0.4)
+        while not is_steady():
+          sleep(0.2)
+        end
+        sleep(0.2)
+
+        textmsg("delta",i)
+
+        retries=0
+        succeed=serveratdelta(i)
+
+        while not succeed and retries < RETRY_MAX:
+          retries=retries+1
+          sleep(1.0)
+          succeed=serveratdelta(i)
+        end
+      else:
+        monitor.setProgramState(DONE_ERROR, ERROR_POSE_UNREACHABLE)
+        return False
+      end
+
+      if not succeed:
+        deltas[i]=-deltas[i]
+
+        if not savate(get_actual_tcp_pose(), negative_displacement_tcp_poses[i], get_actual_joint_positions(), poseToList(negative_displacement_joint_positions[i])):
+
+          movej(poseToList(negative_displacement_joint_positions[i]))
+          while not is_steady():
+            sleep(0.2)
+          end
+          sleep(0.2)
+
+          textmsg("-delta",i)
+
+          retries=0
+          while not succeed and retries < RETRY_MAX:
+            retries=retries+1
+            sleep(1.0)
+          succeed=serveratdelta(i)
+          end
+        else:
+          monitor.setProgramState(DONE_ERROR, ERROR_POSE_UNREACHABLE)
+          return False
+        end
+
+        if not succeed:
+          monitor.setProgramState(DONE_ERROR, ERROR_BOARD_LOST)
+          return False
+        end
+      end
+      monitorsetprogramstate(i)
+      i=i+1
+    end
+
+    textmsg("setalldeltas")
+    retries=0
+    succeed=vision_server.setalldeltas(deltas[0], deltas[1], deltas[2], deltas[3], deltas[4], deltas[5])
+
+    while not succeed and retries < RETRY_MAX:
+      retries=retries+1
+      sleep(1.0)
+      succeed=vision_server.setalldeltas(deltas[0], deltas[1], deltas[2], deltas[3], deltas[4], deltas[5])
+    end
+
+    if not succeed:
+      monitor.setProgramState(DONE_ERROR, ERROR_SERVOING_INIT_FAILED)
+      return False
+    end
+
+    textmsg("movej(joint_initpose)")
+    movej(joint_initpose) #retourne a la position initiale
+
+    textmsg("endservoinit")
+    retries=0
+    succeed=vision_server.endservoinit()
+
+    while not succeed and retries < RETRY_MAX:
+      retries=retries+1
+      sleep(1.0)
+      succeed=vision_server.endservoinit()
+    end
+
+    if not succeed:
+      monitor.setProgramState(DONE_ERROR, ERROR_SERVOING_INIT_FAILED)
+      return False
+    end
+
+    return True
+
+  end #}}}initvisualservoing
+
+  def recentrage():  #{{{
+  # fonction de visualservoing pour recentrer le robot sur la grille de calibration
+  # retourne True si le recentrage s'est bien passé
+
+    URType = rq_xmlrpc_services.getrobottype()
+
+    if SKIP_VISUAL_SERVOING:
+      textmsg("skip visual servoing enabled")
+      vision_server.beginservoinit()
+      vision_server.centeringdone()
+      return True
+    end
+
+    textmsg("routine de recentrage")
+
+    if not initvisualservoing():
+      return False
+    end
+
+    textmsg("initvisualservoing succeed")
+
+    monitor.setProgramState(CENTERING_IN_PROGRESS)
+
+    iteration=0
+    translation_error = 1 #erreur de translation de la grille dans l'image, [posx, posy, scalez]
+    rotation_error = 1    #erreur de rotation de la grille dans l'image, [top/bot, left/right, costheta]
+    prev_translation_error = 2 #pour verifier la convergence
+    prev_rotation_error = 2   #pour verifier la convergence
+    it_without_convergence = 0
+
+    prev_delta_in_camera = p[ 0,  0, 0, 0, 0, 0]
+    beta = 0 #initialize momentum for 1st iteration
+
+    while translation_error > 0.005 or rotation_error > 0.002:
+
+      iteration=iteration+1
+      textmsg("getvisualservoing : iteration ", iteration)
+
+      if prev_translation_error < translation_error or prev_rotation_error < rotation_error:
+        it_without_convergence = it_without_convergence + 1
+      else:
+        it_without_convergence = 0
+      end
+
+      #si pas convergé après 20 itérations, recommencer le recentrage
+      if it_without_convergence > 5 or ( iteration > 20 ):
+
+        if not initvisualservoing():
+          return False
+        end
+
+        #reinitialiser les variables
+        iteration=0
+        translation_error = 1 #erreur de translation de la grille dans l'image, [posx, posy, scalez]
+        rotation_error = 1    #erreur de rotation de la grille dans l'image, [top/bot, left/right, costheta]
+        prev_translation_error = 2 #pour verifier la convergence
+        prev_rotation_error = 2   #pour verifier la convergence
+        it_without_convergence = 0
+        prev_delta_in_camera = p[ 0,  0, 0, 0, 0, 0]
+        beta = 0 #initialize momentum for 1st iteration
+
+        monitor.setProgramState(CENTERING_IN_PROGRESS)
+      end
+
+      sleep(0.2)
+      delta = vision_server.getvisualservoing()
+      retries = 0
+      while delta[0] < 0.5:
+        textmsg("retry")
+        delta = vision_server.getvisualservoing()
+        retries = retries +1
+        if (retries > RETRY_MAX):
+          monitor.setProgramState(DONE_ERROR, ERROR_SERVOING_FAILED)
+          return False
+        end
+      end
+
+      prev_translation_error = translation_error
+      prev_rotation_error = rotation_error
+      translation_error=norm([delta[1], delta[2], delta[3]]) #critere d'arret en translation
+      rotation_error=norm([delta[4], delta[5], delta[6]])    #critere d'arret en rotation
+
+      monitor.setProgramState(CENTERING_NEW_STEP)
+
+      textmsg("centering error : ", [translation_error, rotation_error])
+
+      #calcul du deplacement
+      delta_in_camera = p[ delta[1],  delta[2], delta[3], delta[4], delta[5], delta[6]]
+      textmsg("delta_in_camera", delta_in_camera)
+
+      #on limite le deplacement maximal
+      translationFactor = norm([delta_in_camera[0],  delta_in_camera[1], delta_in_camera[2]])/0.1 # de combien de fois le deplacement depasse le deplacement maximale permis
+      rotationFactor = r2d(norm([delta_in_camera[3],  delta_in_camera[4], delta_in_camera[5]]))/5.0 # de combien de fois la rotation depasse la rotation maximale permise
+
+      factorMax = linalg.max([translationFactor, rotationFactor])
+
+      if factorMax > 1.0:
+        delta_in_camera[0] = delta_in_camera[0]/factorMax
+        delta_in_camera[1] = delta_in_camera[1]/factorMax
+        delta_in_camera[2] = delta_in_camera[2]/factorMax
+        delta_in_camera[3] = delta_in_camera[3]/factorMax
+        delta_in_camera[4] = delta_in_camera[4]/factorMax
+        delta_in_camera[5] = delta_in_camera[5]/factorMax
+      end
+
+      work_delta_in_camera = delta_in_camera
+
+      work_delta_in_camera[0] = beta*prev_delta_in_camera[0] + (1-beta)*delta_in_camera[0]
+      work_delta_in_camera[1] = beta*prev_delta_in_camera[1] + (1-beta)*delta_in_camera[1]
+      work_delta_in_camera[2] = beta*prev_delta_in_camera[2] + (1-beta)*delta_in_camera[2]
+      work_delta_in_camera[3] = beta*prev_delta_in_camera[3] + (1-beta)*delta_in_camera[3]
+      work_delta_in_camera[4] = beta*prev_delta_in_camera[4] + (1-beta)*delta_in_camera[4]
+      work_delta_in_camera[5] = beta*prev_delta_in_camera[5] + (1-beta)*delta_in_camera[5]
+
+      prev_delta_in_camera = delta_in_camera
+
+      if URType != ROBOT_TYPE_UR3:
+        beta = 0.50 # momentum for all but 1st iteration
+      end
+
+      T_actual_camera_in_base = pose_trans(get_actual_tcp_pose(), T_camera_in_tcp)
+      T_next_camera_in_base = pose_trans(T_actual_camera_in_base, work_delta_in_camera)
+      next_tcp_pose = pose_trans(T_next_camera_in_base, T_tcp_in_camera)
+      current_tcp_pose = get_actual_tcp_pose()
+      current_joint_pose = get_actual_joint_positions()
+
+      fail_on_error = True
+      next_tcp_joint_pose = get_rq_valid_ik_joints(next_tcp_pose,current_joint_pose,fail_on_error)
+      if not rq_is_pose_valid_(next_tcp_joint_pose,fail_on_error):
+          textmsg("Invalid convergence pose")
+          return False
+      end
+
+      # prevent savate
+      if savate(current_tcp_pose, next_tcp_pose, current_joint_pose, next_tcp_joint_pose):
+          return False
+      end
+
+      movej(next_tcp_joint_pose, a=0.4)
+      while not is_steady():
+        sleep(0.2)
+      end
+      sleep(0.2)
+
+    end
+
+    monitor.setProgramState(AUTO_FOCUS_IN_PROGRESS)
+
+    textmsg("Centering done")
+    retries=0
+    succeed=vision_server.centeringdone()
+
+    while not succeed and retries < RETRY_MAX:
+      retries=retries+1
+      sleep(1.0)
+      succeed=vision_server.centeringdone()
+    end
+
+    if not succeed:
+      monitor.setProgramState(DONE_ERROR, ERROR_CENTERING_FAILED)
+      return False
+    end
+
+    monitor.setProgramState(CENTERING_DONE)
+    monitor.setProgramState(AUTO_FOCUS_DONE)
+
+    return True
+
+
+  end #}}}
+
+  def calibration(): #{{{
+
+    textmsg("calibration")
+
+    URType = rq_xmlrpc_services.getrobottype()
+    current_pose = get_actual_tcp_pose()
+
+    gridWidth = vision_server.getgridwidth()
+    centeredCameraToGridDistance = gridWidth * 1.6667
+    meanCalibrationDistance = centeredCameraToGridDistance
+    gridHalfWidth = meanCalibrationDistance/3.5
+    gridHalfHeigth = meanCalibrationDistance/4.65
+    if meanCalibrationDistance < 0.2:
+      meanCalibrationDistance = 0.2 #pas plus proche que 20cm
+    end
+    minLinearCalibDistance = meanCalibrationDistance/3.9 #distance minimale entre les poses de calibration
+
+    hc_zoom_z1 = meanCalibrationDistance/3.15
+    hc_zoom_z2 = meanCalibrationDistance/6.75
+    hc_delta_x = meanCalibrationDistance/6.45
+    hc_delta_y = meanCalibrationDistance/8.90
+
+    textmsg("Robot Type : ",URType)
+    textmsg("meanCalibrationDistance : ",meanCalibrationDistance)
+
+    T_camera_in_base = get_T_in_base_from_flange(T_camera_in_flange)
+
+    #calcul des poses de calibration de la camera
+    camera_rotation_center=pose_trans(T_camera_in_base, p[0,0,centeredCameraToGridDistance,0,0,0]) #centre de la sphere
+
+    vertices = linalg.list(5, p[0,0,0,0,0,0])
+    vertices[1] = pose_trans(camera_rotation_center, p[-gridHalfWidth, gridHalfHeigth,0,0,0,0])
+    vertices[2] = pose_trans(camera_rotation_center, p[gridHalfWidth, gridHalfHeigth,0,0,0,0])
+    vertices[3] = pose_trans(camera_rotation_center, p[gridHalfWidth, -gridHalfHeigth,0,0,0,0])
+    vertices[4] = pose_trans(camera_rotation_center, p[-gridHalfWidth, -gridHalfHeigth,0,0,0,0])
+
+    triangles = [p[0,1,2,0,0,0], p[0,2,3,0,0,0], p[0,3,4,0,0,0], p[0,1,4,0,0,0], p[1,2,3,0,0,0], p[1,3,4,0,0,0]]
+
+    monitor.setProgramState(CALIBRATING_IN_PROGRESS)
+
+    nbPosesCalibration = 27
+    nbPosesValidation = 9
+
+    calibration_joint_positions = linalg.list(nbPosesCalibration + nbPosesValidation, p[0,0,0,0,0,0])
+    camera_poses_in_base = linalg.list(nbPosesCalibration + nbPosesValidation, p[0,0,0,0,0,0]) #utile pour verifier que chaque position de calibration est suffisamment eloigne une des autres
+    centered_joint_positions = get_actual_joint_positions()
+
+    previous_calibration_joint_position = get_actual_joint_positions()#va servir a verifier si la solution trouve est trop eloigne de la solution precedente
+    previous_tcp_pose_in_base = get_actual_tcp_pose()
+
+    # Hardcoded displacements for the first 9 poses
+    d0 = p[0,0,hc_zoom_z1,0,0,0]
+    d1 = p[0,0,hc_zoom_z2,0,0,0]
+    d2 = p[0,0,0,0,0,0]
+    d3 = p[-1*hc_delta_x, -1*hc_delta_y,0,0,0,0]
+    d4 = p[hc_delta_x, -1*hc_delta_y,0,0,0,0]
+    d5 = p[-1*hc_delta_x, hc_delta_y,0,0,0,0]
+    d6 = p[hc_delta_x, hc_delta_y,0,0,0,0]
+    d7 = p[0,0,0,0,0,d2r(30)]
+    d8 = p[0,0,0,0,0,d2r(-30)]
+    cam_displacements = [d0,d1,d2,d3,d4,d5,d6,d7,d8]
+
+    # Generate the first 9 hardcoded calibration poses
+    # Each pose is checked within safety limits and collision free
+    # If one pose fails, then the calibration process fails
+    nbposes = 0
+    while(nbposes < 9):
+        cam_pose = pose_trans(T_camera_in_base,cam_displacements[nbposes])
+        tcp_pose = pose_trans(cam_pose, T_tcp_in_camera)
+        fail_on_error = True
+        joint_config = get_rq_valid_ik_joints(tcp_pose,centered_joint_positions,fail_on_error)
+        if not rq_is_pose_valid(tcp_pose,joint_config,centered_joint_positions,cam_pose,vertices,triangles,previous_tcp_pose_in_base,previous_calibration_joint_position,fail_on_error):
+            return False
+        end
+        camera_poses_in_base[nbposes] = cam_pose
+        calibration_joint_positions[nbposes] = listToPose(joint_config)
+        previous_tcp_pose_in_base = tcp_pose
+        previous_calibration_joint_position = joint_config
+        nbposes = nbposes+1
+    end
+
+    it = 0
+    nbposes = 9
+
+    seed = floor(42000*random())
+    if CALIBRATION_SEED >= 0:
+      seed = CALIBRATION_SEED
+    end
+    textmsg("seed: ", seed)
+
+    rand0 = rq_xmlrpc_services.createrandomcontext("uniformreal", [meanCalibrationDistance -0.05, meanCalibrationDistance + 0.05], seed)
+    rand1 = rq_xmlrpc_services.createrandomcontext("uniformreal", [d2r(-10), d2r(10)], 2*seed)
+    rand2 = rq_xmlrpc_services.createrandomcontext("uniformreal", [0, d2r(360)], 3*seed)
+    rand3 = rq_xmlrpc_services.createrandomcontext("uniformreal", [0, 1], 4*seed)
+
+    # Random calibration and validation poses are generated using the seed
+    # The var it controls the maximal number of iterations allowed to find nbPosesCalibration + nbPosesValidation poses
+    # If a pose fails, the process continues until the right number of poses if found or it exceeds the max value allowed
+
+    while nbposes < (nbPosesCalibration + nbPosesValidation) and it < 1000:
+
+        sync()
+
+        rho = rq_xmlrpc_services.random(rand0)
+        rz = rq_xmlrpc_services.random(rand1)
+        #sphere point picking
+        theta = rq_xmlrpc_services.random(rand2)
+        phi = asin(2*sin(d2r(25))*rq_xmlrpc_services.random(rand3)-sin(d2r(25)))
+
+#rho= meanCalibrationDistance + (0.1*random()-0.05)
+#rz=d2r(20*random()-10)
+#theta = d2r(360*random())
+#phi = asin(2*sin(d2r(20))*random()-sin(d2r(20)))
+
+        camera_pose_in_base = pose_trans(camera_rotation_center, p[0,0,0,phi*cos(theta),phi*sin(theta),0])
+        camera_pose_in_base = pose_trans(camera_pose_in_base, p[0,0,0,0,0,rz])
+        camera_pose_in_base = pose_trans(camera_pose_in_base, p[0,0,-rho,0,0,0])
+
+        #verifier que la pose est assez loin des autres
+        if nbposes < nbPosesCalibration:
+          i=0
+        else:
+          i=nbPosesCalibration
+        end
+
+        #i=0
+
+        nbverif = 0
+        while i < nbposes:
+
+            if nbverif == 50:
+                sync()
+                nbverif = 0
+            end
+
+            nbverif = nbverif+1
+
+            distance = pose_sub(camera_pose_in_base, camera_poses_in_base[i])
+            linear_dist = norm([distance[0], distance[1], distance[2]])
+            angular_dist = norm([distance[3], distance[4], distance[5]])
+
+            min_angular_dist_deg = 12
+
+            if URType == ROBOT_TYPE_UR3:
+               min_angular_dist_deg = 5
+            end
+
+            if (linear_dist < minLinearCalibDistance) and (angular_dist < d2r(min_angular_dist_deg)) :
+              i = -1
+              break
+            end
+            i = i+1
+        end
+        if i < 0:
+          continue
+        end
+
+        it = it + 1
+        textmsg("it : ", it)
+
+        tcp_pose_in_base = pose_trans(camera_pose_in_base, T_tcp_in_camera)
+
+        # Generate the poses
+
+        fail_on_error = False
+        calibration_joint_position = get_rq_valid_ik_joints(tcp_pose_in_base,centered_joint_positions,fail_on_error)
+        if not rq_is_pose_valid(tcp_pose_in_base,calibration_joint_position,centered_joint_positions,camera_pose_in_base,vertices,triangles,previous_tcp_pose_in_base,previous_calibration_joint_position,fail_on_error):
+            continue
+        end
+
+       camera_poses_in_base[nbposes] = camera_pose_in_base
+       calibration_joint_positions[nbposes] = listToPose(calibration_joint_position)
+       previous_tcp_pose_in_base = tcp_pose_in_base
+       previous_calibration_joint_position = calibration_joint_position
+
+       nbposes = nbposes + 1
+
+       textmsg("nbposes : ", nbposes)
+
+    end
+
+    rq_xmlrpc_services.deleterandomcontext(rand0)
+    rq_xmlrpc_services.deleterandomcontext(rand1)
+    rq_xmlrpc_services.deleterandomcontext(rand2)
+    rq_xmlrpc_services.deleterandomcontext(rand3)
+
+    if nbposes < (nbPosesCalibration + nbPosesValidation):
+      textmsg("not enough calibration pose reachable")
+      monitor.setProgramState(DONE_ERROR, ERROR_NOT_ENOUGH_POSES)
+      return False
+    end
+
+    calibration_dexterities = linalg.list(nbPosesCalibration)
+
+    #debut de la calibration
+    i=0
+    while i < nbPosesCalibration:
+
+      textmsg("calibration pose ", i)
+      textmsg("q_target : ", poseToList(calibration_joint_positions[i]))
+      calibration_dexterities[i] = rq_xmlrpc_services.getrobotdexterity(poseToList(calibration_joint_positions[i]))
+      movej(poseToList(calibration_joint_positions[i]), a=0.4)
+      while not is_steady():
+        sleep(0.2)
+      end
+      sleep(0.2)
+
+      # Recupere la pose de la camera dans le repere de la base
+      p=get_actual_tool_flange_pose() # suppose la camera a la flange
+
+      retries = 0
+      while (not vision_server.calibrationpose(p[0], p[1], p[2], p[3], p[4], p[5])):
+
+        retries = retries + 1
+
+        if (retries > RETRY_MAX):
+          vision_server.endautocalib(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+          monitor.setProgramState(DONE_ERROR, ERROR_BOARD_LOST)
+          return False
+        end
+
+        textmsg("vision_server.calibrationpose retry")
+        sleep(1.0)
+
+      end
+
+      monitor.setProgramState(NEW_CALIBRATION_POSE)
+      i=i+1
+    end
+
+    sleep(3.0) # to wait until server is ready
+    p=get_actual_tool_flange_pose() # suppose la camera a la flange
+    endautocalib = vision_server.endautocalib(p[0], p[1], p[2], p[3], p[4], p[5])
+    textmsg("endautocalib : ", endautocalib)
+
+    if endautocalib[0]<0.5:
+      monitor.setProgramState(DONE_ERROR, ERROR_CALIBRATION_FAILED)
+      return False
+    end
+
+    textmsg("calibration succeed")
+    textmsg("maximum calibration world error : ", endautocalib[4])
+    #textmsg("minimum calibration dexterity: ", linalg.min(calibration_dexterities))
+    #textmsg("mean calibration dexterity: ", linalg.mean(calibration_dexterities))
+    #textmsg("calibration dexterities: ", calibration_dexterities)
+
+    textmsg("gridpoint00:", vision_server.gridpoint(0.0,0.0))
+    textmsg("gridpoint01:", vision_server.gridpoint(0.0,23.0))
+    textmsg("gridpoint10:", vision_server.gridpoint(17.0,0.0))
+    textmsg("gridpoint11:", vision_server.gridpoint(17.0,23.0))
+
+    #############################################
+    # Validation de la calibration
+    #
+    # On veut pas faire échouer la calibration
+    # si des poses de validation sont manquées
+    #
+    ############################################
+    textmsg("begin validation")
+    retries=0
+    succeed=vision_server.beginvalidation()
+
+    while not succeed and retries < RETRY_MAX:
+      retries=retries+1
+      sleep(1.0)
+      succeed=vision_server.beginvalidation()
+    end
+
+    if not succeed:
+      monitor.setProgramState(DONE_ERROR, ERROR_VALIDATION_FAILED)
+      return False
+    end
+
+
+    validation_dexterities = linalg.list(nbPosesValidation)
+
+    monitor.setProgramState(VALIDATION_IN_PROGRESS)
+
+
+    while i <( nbPosesCalibration + nbPosesValidation):
+
+      textmsg("validation pose ", i)
+      textmsg("q_target : ", poseToList(calibration_joint_positions[i]))
+
+      validation_dexterities[i - nbPosesCalibration] = rq_xmlrpc_services.getrobotdexterity(poseToList(calibration_joint_positions[i]))
+      movej(poseToList(calibration_joint_positions[i]), a=0.4)
+      while not is_steady():
+        sleep(0.2)
+      end
+      sleep(0.2)
+
+      # Recupere la pose de la camera dans le repere de la base
+      p=get_actual_tool_flange_pose() # suppose la camera a la flange
+
+      retries = 0
+      while (not vision_server.validationpose(p[0], p[1], p[2], p[3], p[4], p[5])) and (retries < RETRY_MAX):
+
+        retries = retries + 1
+        textmsg("vision_server.validationpose retry")
+
+        sleep(1.0)
+
+      end
+
+      monitor.setProgramState(NEW_VALIDATION_POSE)
+      i=i+1
+    end
+
+    validationresult = vision_server.endvalidation(p[0], p[1], p[2], p[3], p[4], p[5])
+
+    if validationresult[0] == 0:
+        textmsg("The validation ending failed at pose: ",p)
+        monitor.setProgramState(DONE_ERROR, ERROR_VALIDATION_FAILED)
+        return False
+    end
+
+    textmsg("maxGlobalWorldError:",validationresult[3])
+    textmsg("stdDevGlobalWorldError:",validationresult[6])
+    #textmsg("minimum validation dexterity: ", linalg.min(validation_dexterities))
+    #textmsg("mean validation dexterity: ", linalg.mean(validation_dexterities))
+    #textmsg("validation dexterities: ", validation_dexterities)
+
+    if endautocalib[4] > <%max_calibration_threshold%> or validationresult[3] > <%max_calibration_threshold%>:
+        monitor.setProgramState(DONE_WARNING, WARNING_CALIBRATION_THRESHOLD)
+    end
+
+    #tester la calibration pendant environ 1 minute
+    #freedrive_mode()
+    #viewpointcounter = 0
+    #while viewpointcounter < 200:
+    #  p=get_actual_tool_flange_pose()
+    #  vision_server.testviewpoint(p[0], p[1], p[2], p[3], p[4], p[5])
+    #  viewpointcounter = viewpointcounter + 1
+    #  textmsg(viewpointcounter)
+    #end
+
+    return True
+
+  end #}}}
+
+  # Verify the grid type against the robot type
+  # Returns True if grid is valid, False otherwise
+  # Signals the monitor in cas of mismatch of grid not found
+  def assess_calib_grid():
+
+    grid_found = GRID_TYPE
+
+    if grid_found == GRID_NOT_FOUND:
+
+        monitor.setProgramState(DONE_ERROR, ERROR_GRID_NOT_FOUND)
+
+        return False
+
+    elif grid_found == GRID_UNKNOWN:
+
+        monitor.setProgramState(DONE_ERROR, ERROR_GRID_UNKNOWN)
+
+        return False
+    end
+
+    robot_type = rq_xmlrpc_services.getrobottype()
+
+    if robot_type == ROBOT_TYPE_UR3 and (grid_found != GRID_SMALL and grid_found != GRID_FIDUCIAL):
+
+        monitor.setProgramState(DONE_ERROR, ERROR_GRID_NOT_SMALL_ON_UR3)
+
+        return False
+
+    elif robot_type == ROBOT_TYPE_UR5 and (grid_found != GRID_STANDARD and grid_found != GRID_FIDUCIAL):
+
+        monitor.setProgramState(DONE_ERROR, ERROR_GRID_NOT_STANDARD_ON_UR5)
+
+        return False
+
+    elif robot_type == ROBOT_TYPE_UR10 and (grid_found != GRID_STANDARD and grid_found != GRID_FIDUCIAL):
+
+        monitor.setProgramState(DONE_ERROR, ERROR_GRID_NOT_STANDARD_ON_UR10)
+
+        return False
+
+    elif robot_type == ROBOT_TYPE_UR16 and (grid_found != GRID_STANDARD and grid_found != GRID_FIDUCIAL):
+
+        monitor.setProgramState(DONE_ERROR, ERROR_GRID_NOT_STANDARD_ON_UR16)
+
+        return False
+
+    else:
+
+        return True
+    end
+
+  end
+
+  #######################
+  # Main program
+  #######################
+
+  global monitor = rpc_factory("xmlrpc", <%xmlrpc_monitor_uri%>)
+
+  global vision_server=rpc_factory("xmlrpc",<%xmlrpc_vision_uri%>)
+  global rq_xmlrpc_services=rpc_factory("xmlrpc", "<%rq_xmlrpc_server_uri%>")
+  global linalg=rpc_factory("xmlrpc", "<%rq_xmlrpc_server_uri%>/linalg")
+
+
+  global selfcollisioncontextid = rq_xmlrpc_services.createcollisioncontext()
+  global cameracollisioncontextid = rq_xmlrpc_services.createcollisioncontext()
+
+  textmsg("selfcollisioncontextid : ", selfcollisioncontextid)
+  textmsg("cameracollisioncontextid : ", cameracollisioncontextid)
+
+  ft300id = rq_xmlrpc_services.registercollisionobject(selfcollisioncontextid, ":/ply/FT300.ply")
+  cameraid = rq_xmlrpc_services.registercollisionobject(selfcollisioncontextid, ":/ply/CAMERA.ply", p[0,0,0.0375,0,0,0])
+
+  monitor.setProgramState(STARTED)
+
+  if not assess_calib_grid():
+    textmsg("Grid assessment failed")
+    rq_xmlrpc_services.deletecollisioncontext(cameracollisioncontextid)
+    rq_xmlrpc_services.deletecollisioncontext(selfcollisioncontextid)
+    halt
+  end
+
+  if not recentrage():
+    textmsg("Centering failed")
+    rq_xmlrpc_services.deletecollisioncontext(cameracollisioncontextid)
+    rq_xmlrpc_services.deletecollisioncontext(selfcollisioncontextid)
+    halt
+  end
+
+  if not calibration():
+    textmsg("Calibration failed")
+    rq_xmlrpc_services.deletecollisioncontext(cameracollisioncontextid)
+    rq_xmlrpc_services.deletecollisioncontext(selfcollisioncontextid)
+    halt
+  end
+
+  textmsg("Calibration done")
+
+  movej(last_position_joint)
+
+  rq_xmlrpc_services.deletecollisioncontext(cameracollisioncontextid)
+  rq_xmlrpc_services.deletecollisioncontext(selfcollisioncontextid)
+
+  monitor.setProgramState(DONE_SUCCESS)
+end

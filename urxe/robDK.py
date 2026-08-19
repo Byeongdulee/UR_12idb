@@ -1,6 +1,6 @@
 # UR3
 from PyQt5.QtCore import QObject
-import math3d as m3d
+from common import m3d  # centralized math3d (4.x compat applied in common.m3d)
 import math
 from robodk.robolink import Robolink, ITEM_TYPE_ROBOT     # RoboDK API
 import robodk.robomath as rkmath      # Robot toolbox

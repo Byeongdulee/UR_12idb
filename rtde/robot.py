@@ -8,7 +8,6 @@ class RobotException(Exception):
     pass
 
 # UR3
-import math3d as m3d
 import numpy as np
 import logging
 import math
@@ -19,7 +18,12 @@ with open(os.path.join(text_file_path, '..', 'urscripts', 'checkdistance.script'
     CheckdistanceScript = file.read()
 sys.path.append(os.path.join(text_file_path, '..', 'common'))
 
-from robUR import SafetyMode
+# Import the enum from the dependency-free leaf module, not robUR, to avoid a
+# cyclic/duplicate robUR load (robUR -> urxe -> urxe.robot -> robUR).
+from common.urmodes import SafetyMode
+# math3d (with 4.x compat applied) is centralized in common.m3d — use it instead
+# of `import math3d` so the compat shims live in one place.
+from common import m3d
 
 
 #### Standard orientations.

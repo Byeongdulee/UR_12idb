@@ -24,54 +24,16 @@ try:
 except:
     pass
 
-from PyQt5.QtCore import pyqtSignal
-
 import time
 import numpy
-import math3d as m3d
-# ── math3d 4.x compatibility ───────────────────────────────────────────────
-# math3d 4.0.0 changed Transform.pose_vector to return a PoseVector object
-# (with only a `.array`), whereas 3.x returned a plain ndarray, and it removed
-# Transform.get_pose_vector() entirely. The UR robot stack (UR_12idb AND
-# python-urx) was written against the 3.x ndarray API — it calls
-# pose_vector.tolist(), indexes/iterates pose_vector, and passes it straight to
-# movel/movec, and calls get_pose_vector(). Restore the ndarray-returning
-# behaviour so all of that works on both 3.x and 4.x. Patching the shared
-# math3d.Transform class here (imported before any robot motion) fixes every
-# downstream user, including python-urx. No-op on 3.x (get_pose_vector exists).
-if not hasattr(m3d.Transform, "get_pose_vector"):
-    _m3d_pv_prop = m3d.Transform.pose_vector
-    def _m3d_pose_vector_ndarray(self, _p=_m3d_pv_prop):
-        pv = _p.fget(self)
-        return pv.array if hasattr(pv, "array") else pv
-    m3d.Transform.pose_vector = property(_m3d_pose_vector_ndarray,
-                                         getattr(_m3d_pv_prop, "fset", None),
-                                         getattr(_m3d_pv_prop, "fdel", None))
-    m3d.Transform.get_pose_vector = lambda self: self.pose_vector
-# math3d 4.x prints a stdout deprecation banner (via utils._deprecation_warning,
-# which also runs inspect.stack() on every call) for methods the robot stack
-# still uses, e.g. Vector.dist_squared. During motion this floods the log and
-# adds per-call overhead. Silence it — these are informational only.
-try:
-    import math3d.utils as _m3d_utils
-    _m3d_utils._deprecation_warning = lambda *a, **k: None
-except Exception:
-    pass
+# math3d (with 4.x compatibility applied) is centralized in common.m3d — import
+# it from there instead of `import math3d` so the compat shims live in one place.
+from common import m3d
 import numpy as np
 import math
 import json
 from copy import deepcopy
 
-#sys.path.append('%s\python-urx'%parent_path)
-
-# try:
-#     sys.path.append('%s\python-urx'%parent_path)
-# except:
-#     pass
-# try:
-#     sys.path.append('python-urx')
-# except:
-#     pass
 # UR3
 # when you change the python package, change this line to choose a right class.
 #from urxe.robUR import UR_cam_grip
@@ -90,12 +52,6 @@ class ToolChangerException(Exception):
 
 class UR3(UR_cam_grip):
     # unit of position vector : meter.
-    sigGripper = pyqtSignal(str)
-    sigMoving = pyqtSignal(bool)
-    sigGripperPosition = pyqtSignal(str)
-    sigObject_ongripper = pyqtSignal(bool)
-    sigRobotCommand = pyqtSignal(str)
-    sigRobotPosition = pyqtSignal(numpy.ndarray)
     #Waypointmagup_q=[5.192646026611328, -0.6902674001506348, 0.557411019002096, -1.440483884220459, -1.5736210981952112, -1.0272372404681605]
     Waypointmagup_q = [3.915731906890869, -1.0986860555461426, 1.227795426045553, -1.702268739739889, -1.5722954908954065, 0.7979311943054199]
     Waypoint_QR_p = [ 2.06744440e-01,  2.35091449e-01,  1.53515533e-01,  2.88421769e+00, -1.24519515e+00, -3.20548384e-05]
@@ -1006,157 +962,13 @@ class UR3(UR_cam_grip):
                     break
         print("QR code is centered.")
 
-def auto_align_12idb_remote_heater(rob):
-    
-    dist2ATtag = 0.3
-    barlength = 0.11
-    gripper_width = 0.02
+# The UR3 12IDB alignment/run procedures (auto_align_12idb_remote_heater,
+# auto_align_12idb_standard_holder, auto_align_12idb_standard_holder2) moved to
+# scripts/script_ur3_12idb.py.
 
-    # starting the procedure from the default position...
-    rob.goto_default()
-    print("")
-    print("**************************")
-    print(f"Camera will point at the april tag on the reference frame.")
-    rob.moveto(rob.Waypoint_camera4heater)
-    rob.camera.capture()
-    rob.camera.capture()
-    ret = rob.center_camera2apriltag()
-    if not ret:
-        print("No april tag is found.")
-        print("No further alignment.")
-        rob.goto_default()
-        return False
-    print("")
-    print("An april tag is found and centered to the camera feed.")
-    d = rob.camera.getATdistance(rob.camera.decoded)
-    # keep the distance from camera to the april tag.
-    print(f"Camera will be relocated to {dist2ATtag}m away from the tag.")
-    rob.mvr2x(dist2ATtag - d)
-    # read camera position and Z align the robot arm.
-    cp = rob.get_camera_position()
-    rob.move2z(cp.pos[2])
-    rob.set_orientation()
-    rob.grab()
-    print("")
-    print("")
-    print("Confirming the distance from the tag by touching.")
-    rob.bump(x=-0.2, backoff=0.05)
-    rob.mvr2z(0.05)
-    print("")
-    print("")
-    print("Move to the center of the bar.")
-    rob.mvr2x(-(barlength/2+0.05+gripper_width/2))
-    print("")
-    print("")
-    print("Rotate the gripper.")
-    rob.rotz(-90)
-    print("")
-    print("")
-    print("Aligning the position along the beam by touching.")
-    rob.mvr2y(-0.04)
-    rob.mvr2z(-0.04)
-    rob.bump(y=0.1, backoff=0.02)
-    rob.mvr2z(0.04)
-    # go to the center of the heater along the beam direction.
-    rob.mvr2y(0.032)
-    # z position fine tuning.
-    print("")
-    print("")
-    print("Checking the z position by touching.")
-    v_standoff = 0.02
-    rob.bump(z=-0.1, backoff=v_standoff)
-    p0 = rob.get_xyz()
-    # in-plane tilt tuning..
-    print("")
-    print("In the following, tilt around z will be checked.")
-    z_tempdown = v_standoff+0.005
-    rob.mvr2y(0.015)
-    rob.mvr2z(-z_tempdown)
-    rob.mvr2x(barlength/2)
-    rob.bump(y=-0.01)
-    p1 = rob.get_xyz()
-    rob.mvr2y(0.005)
-    rob.mvr2x(-barlength)
-    rob.bump(y=-0.01)
-    p2 = rob.get_xyz()
-    rob.mvr2y(0.005)
-    rob.mvr2x(barlength/2)
-    ang = math.atan((p2[1]-p1[1])/barlength)*180/math.pi
-    rob.rotz(ang)
-    rob.mvr2z(z_tempdown)
-    print("")
-    print(f"The heater is tilted by {ang} degree. Taken into account.")
-    rob.moveto(p0.tolist()[0:3])
-    # move down 
-    rob.release()
-    rob.mvr2z(-v_standoff-0.015)
-    rob.set_current_as_sampledown()
-    rob.movegripperup_totransport()
-    print("")
-    print("A test run will start in a second.")
-    time.sleep(3)
-    rob.dropofftest()
-    print("Done.")
-    print("")
-    print("Ready for returing sample.")
-    print("use rob.moveMagazine2FrameN(N) to return the reference frame to the slot N.")
-    print("then, rob.returnsample() to transport it.")
-
-def auto_align_12idb_standard_holder(rob):
-    
-    dist2ATtag = 0.3
-    barlength = 0.11
-    gripper_width = 0.023
-
-    # starting the procedure from the default position...
-    rob.goto_default()
-    print("")
-    print("**************************")
-    print(f"Camera will point at the april tag on the reference frame.")
-    rob.release()
-    rob.moveto(rob.Waypoint_camera4standard)
-    # align with camera
-    rob.rotx(-30, coordinate='camera')
-    rob.mvr2x(0.04)
-    rob.grab()
-    rob.bump(x=-0.1, backoff=0.005)
-    rob.mvr2z(0.03)
-    rob.mvr2x(-1*(gripper_width/2+barlength/2)-0.005)
-    rob.bump(z=-0.1, backoff = 0.005)
-    rob.release()
-    rob.mvr2z(-0.02-0.005)
-    rob.set_current_as_sampledown()
-    rob.movegripperup_totransport()
-    print("")
-    print("A test run will start in a second.")
-    time.sleep(3)
-    rob.dropofftest()
-    print("Done.")
-    print("")
-    print("Ready for returing sample.")
-    print("use rob.moveMagazine2FrameN(N) to return the reference frame to the slot N.")
-    print("then, rob.returnsample() to transport it.")
-
-def auto_align_12idb_standard_holder2(rob):
-    rob.camera.AT_physical_size = april_tag_size['standard']
-    rob.goto_default()
-    rob.transport_from_default_to_samplestage_up()
-    rob.mvr2z(-0.1)
-    rob.camera_face_down()
-    rob.bring_QR_to_camera_center()
-    rob.grippertip2camera()
-    h = rob.measureheight()
-    print(f"The TCP is from {h}m above a surface.")
-    
 # This is for UR5 robot at 12-ID-C.
 class UR5(UR_cam_grip):
     # unit of position vector : meter.
-    sigGripper = pyqtSignal(str)
-    sigMoving = pyqtSignal(bool)
-    sigGripperPosition = pyqtSignal(str)
-    sigObject_ongripper = pyqtSignal(bool)
-    sigRobotCommand = pyqtSignal(str)
-    sigRobotPosition = pyqtSignal(numpy.ndarray)
     toolchanger_length = 0.045
 
     Waypoint_tool3_p = [-0.71556695,  0.00796828,  0.209, -2.18919547,  2.23820588, -0.00663184]
