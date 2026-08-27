@@ -134,8 +134,12 @@ class UR(QObject):
         self.robot.IP = IP
         try:
             self.set_tcp(self.tcp)
-        except:
-            pass
+        except Exception:
+            try:
+                self.robot.close()
+            except Exception:
+                pass
+            raise
         try:
             self.set_payload(1.35, (-0.003,0.01,0.037))
         except:

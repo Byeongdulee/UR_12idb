@@ -101,9 +101,15 @@ class Robot(robot.Robot):
         if isinstance(tcp, m3d.Transform):
             tcp = tcp.pose_vector
         URRobot.set_tcp(self, tcp)
-        _tcp = [0, 0, 0, 0, 0, 0]
-        while not (np.round(np.array(_tcp), 5) == np.round(np.array(tcp), 5)).all():
-            _tcp = self.get_tcp()
+        deadline = time.monotonic() + 2.0
+        while True:
+            observed_tcp = self.secmon.get_tcp(wait=True)
+            if np.allclose(observed_tcp, tcp, rtol=0.0, atol=1e-5):
+                return
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"TCP did not update within 2.0 s: requested={tcp!r}, observed={observed_tcp!r}"
+                )
 
     def bump(self, x=0, y=0, z=0, backoff=0, force = 0, wait=True):
         #data = CheckdistanceScript

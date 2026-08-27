@@ -34,6 +34,8 @@ class Program(object):
     def __init__(self, prog):
         self.program = prog
         self.condition = Condition()
+        self.sent = False
+        self.error = None
 
     def __str__(self):
         return "Program({})".format(self.program)
@@ -98,7 +100,7 @@ class SecondaryMonitor(Thread):
         send program to robot in URRobot format
         If another program is send while a program is running the first program is aborded.
         """
-        prog.strip()
+        prog = prog.strip()
         self.logger.debug("Enqueueing program: %s", prog)
         if not isinstance(prog, bytes):
             prog = prog.encode()
@@ -107,8 +109,18 @@ class SecondaryMonitor(Thread):
         with data.condition:
             with self._prog_queue_lock:
                 self._prog_queue.append(data)
-            data.condition.wait(timeout=2.0)
-            self.logger.debug("program sent: %s", data)
+            completed = data.condition.wait_for(
+                lambda: data.sent or data.error is not None,
+                timeout=2.0,
+            )
+        if not completed:
+            with self._prog_queue_lock:
+                if data in self._prog_queue:
+                    self._prog_queue.remove(data)
+            raise TimeoutException("Monitor thread did not transmit program within 2.0 s")
+        if data.error is not None:
+            raise data.error
+        self.logger.debug("program sent: %s", data)
 
     def run(self):
         """
@@ -121,9 +133,17 @@ class SecondaryMonitor(Thread):
             with self._prog_queue_lock:
                 if len(self._prog_queue) > 0:
                     data = self._prog_queue.pop(0)
-                    self._s_secondary.send(data.program)
-                    with data.condition:
-                        data.condition.notify_all()
+                else:
+                    data = None
+            if data is not None:
+                try:
+                    self._s_secondary.sendall(data.program)
+                except Exception as ex:
+                    data.error = ex
+                else:
+                    data.sent = True
+                with data.condition:
+                    data.condition.notify_all()
 
             data = self._get_data()
             try:
