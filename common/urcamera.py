@@ -23,6 +23,19 @@ class NoUSBCameraException(Exception):
 try:
     from pupil_apriltags import Detector
     from pupil_apriltags.bindings import Detection
+
+    class AprilTagDetector(Detector):
+        def __del__(self):
+            if self.tag_detector_ptr is None:
+                return
+            self.libc.apriltag_detector_destroy.restype = None
+            self.libc.apriltag_detector_destroy(self.tag_detector_ptr)
+            self.tag_detector_ptr = None
+            for family, tag_family in self.tag_families.items():
+                destroy = getattr(self.libc, f"{family}_destroy")
+                destroy.restype = None
+                destroy(tag_family)
+            self.tag_families = {}
 except ImportError:
     ISAPRILTAGS = False
 import os
@@ -98,8 +111,8 @@ __license__ = "LGPLv3"
 # 543, 0.19
 # 587, 0.14
 
-def decodeAT(img=[], F=[], cam_f=camera_f, imgH=default_imgH, imgV=default_imgV):
-    at = Detector(families='tag36h11',
+def decodeAT(img=[], F=[], cam_f=camera_f, imgH=default_imgH, imgV=default_imgV, detector=None):
+    at = detector or AprilTagDetector(families='tag36h11',
                         nthreads=1,
                         quad_decimate=1.0,
                         quad_sigma=0.0,
@@ -149,6 +162,8 @@ class camera(object):
         self.intrinsic_mtx = []
         self.image = None
         self._running = False
+        self._apriltag_detector = None
+        self._apriltag_lock = threading.Lock()
         if len(self.IP) == 0:
             vidcap = cv2.VideoCapture(self.device)
             if not vidcap.isOpened():
@@ -242,7 +257,17 @@ class camera(object):
         return ret, pilImage
 
     def decodeAT(self):
-        r = decodeAT(self.image, self.intrinsic_mtx, self.camera_f, self.imgH, self.imgV)
+        with self._apriltag_lock:
+            if self._apriltag_detector is None:
+                self._apriltag_detector = AprilTagDetector(families='tag36h11',
+                                    nthreads=1,
+                                    quad_decimate=1.0,
+                                    quad_sigma=0.0,
+                                    refine_edges=1,
+                                    decode_sharpening=0.25,
+                                    debug=0)
+            r = decodeAT(self.image, self.intrinsic_mtx, self.camera_f, self.imgH, self.imgV,
+                         self._apriltag_detector)
         if isinstance(r, type(None)):
             return None
         if type(self.intrinsic_mtx) is not np.ndarray:
