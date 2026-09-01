@@ -155,6 +155,8 @@ Single numeric values become floats, non-numeric single values remain strings, a
 
 Prefer validation that cannot contact or move hardware.
 
+Use `12idUR/python/.venv/bin/python` for Python commands that require project dependencies. The system Python does not contain all required packages, including OpenCV.
+
 For syntax validation without importing modules:
 
 ```sh

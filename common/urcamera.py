@@ -137,9 +137,10 @@ def showQRcode(QRdata, image):
 
 class camera(object):
     def __init__(self,
-                 IP="", device=0, apriltagsize = AT_size):
+                 IP="", device=0, apriltagsize = AT_size, frame_source=None):
         self.IP = IP
         self.device = device
+        self.frame_source = frame_source
         self.camera_f = camera_f
         self.imgH = default_imgH
         self.imgV = default_imgV
@@ -205,7 +206,10 @@ class camera(object):
 
     def capture(self):
         resp=None
-        if len(self.IP)>0:
+        if self.frame_source is not None:
+            pilImage = self.frame_source()
+            ret = pilImage is not None
+        elif len(self.IP)>0:
             #Try to get camera image with provided robot IP
             try:
                 resp = requests.get("http://"+self.IP+":4242/current.jpg?type=color").content
