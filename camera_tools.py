@@ -296,7 +296,7 @@ def followhands(rob):
     cv2.destroyAllWindows()
 
 
-def run_pick_sequence(rob, QRdist):
+def run_pick_sequence(rob, QRdist, dist_from_base = 0.02):
     # Pick sequence: move the TCP to the camera position, plunge down by
     # the measured tag distance, grip, hold 5 s, release, and retract.
     if not isinstance(QRdist, (int, float)) or QRdist <= 0:
@@ -314,7 +314,7 @@ def run_pick_sequence(rob, QRdist):
         #rob.release()
         rob.mvr2z(QRdist, vel=0.1)    # back up
         time.sleep(1)
-        rob.mvr2z(-QRdist+0.02, vel=0.05)   # down (base -Z + 0.02)
+        rob.mvr2z(-QRdist+dist_from_base, vel=0.05)   # down (base -Z + 0.02)
         rob.release()
         rob.mvr2z(QRdist, vel=0.1)
         print("Pick sequence done.")
@@ -591,7 +591,7 @@ def showcamera(rob, codetype = 0, obj_distance=0.15):
         if key == 111: #o
             dispatch(rob.move_toward_camera, -0.02, north=0, east=0.0)
         if key == 103: #g
-            dispatch(run_pick_sequence, rob, QRdist)
+            dispatch(run_pick_sequence, rob, QRdist, dist_from_base=0.005)
         #if key == 102: #f
         #    rob.roll_around_camera(-10, obj_distance+0.18)
         if key == 114: #r
@@ -888,7 +888,7 @@ def roll_around_tag(rob, step=5, tol=1e-2, max_steps=24):
     print("Reached max_steps before the camera faced down.")
     return False
 
-def search_apriltag_by_tilt(rob, ref_pos=(-0.4, -0.2, 0.5),
+def search_apriltag_by_tilt(rob, ref_pos=(-0.35, -0.18, 0.5),
                             tilt_range=10, tilt_step=5):
     """Search for an AprilTag by tilting the camera at a reference position.
 
@@ -902,6 +902,7 @@ def search_apriltag_by_tilt(rob, ref_pos=(-0.4, -0.2, 0.5),
 
     Returns True if a tag was found and centered, False otherwise.
     """
+    ref_pos=(-0.0, -0.4, 0.5)
     # 1. Move to the reference position with the current (gripper) TCP.
     print(f"Moving to reference position {list(ref_pos)} ...")
     rob.set_tcp(rob.tcp)
