@@ -34,6 +34,11 @@ class Program(object):
     def __init__(self, prog):
         self.program = prog
         self.condition = Condition()
+        # Set by the monitor thread once the whole program has been written to
+        # the socket, so the sender can tell a real send from a timeout.
+        self.sent = False
+        # Exception raised while sending, if any; re-raised to the sender.
+        self.error = None
 
     def __str__(self):
         return "Program({})".format(self.program)
@@ -93,10 +98,17 @@ class SecondaryMonitor(Thread):
         #self._s_secondary.bind((self.host, secondary_port))
         self._s_secondary = socket.create_connection((self.host, secondary_port), timeout=2.0)
 
-    def send_program(self, prog):
+    def send_program(self, prog, timeout=2.0):
         """
         send program to robot in URRobot format
         If another program is send while a program is running the first program is aborded.
+
+        Blocks until the monitor thread has written the complete program to the
+        secondary interface, and raises if that does not happen within
+        *timeout* seconds or if the socket reports an error. Returning normally
+        therefore means the command really did reach the robot: a silent
+        timeout used to be indistinguishable from success, so a dropped move or
+        TCP change went unnoticed until the robot did the wrong thing.
         """
         prog.strip()
         self.logger.debug("Enqueueing program: %s", prog)
@@ -107,8 +119,28 @@ class SecondaryMonitor(Thread):
         with data.condition:
             with self._prog_queue_lock:
                 self._prog_queue.append(data)
-            data.condition.wait(timeout=2.0)
-            self.logger.debug("program sent: %s", data)
+            data.condition.wait(timeout=timeout)
+
+        # Read the outcome under the queue lock, never while holding
+        # data.condition: run() takes the two locks in the opposite order, so
+        # doing it the other way round can deadlock. Taking the lock here also
+        # blocks until any in-flight sendall() in run() has finished, so sent
+        # and error are the final answer for this program.
+        with self._prog_queue_lock:
+            sent, error = data.sent, data.error
+            if not sent and error is None and data in self._prog_queue:
+                # Timed out before the monitor thread ever picked it up. Drop
+                # it, or it would be sent later and execute out of context --
+                # e.g. a stale move running after the caller already gave up.
+                self._prog_queue.remove(data)
+
+        if error is not None:
+            raise error
+        if not sent:
+            raise TimeoutException(
+                "Program was not sent to the robot within {} s: {}".format(
+                    timeout, prog))
+        self.logger.debug("program sent: %s", data)
 
     def run(self):
         """
@@ -121,7 +153,19 @@ class SecondaryMonitor(Thread):
             with self._prog_queue_lock:
                 if len(self._prog_queue) > 0:
                     data = self._prog_queue.pop(0)
-                    self._s_secondary.send(data.program)
+                    try:
+                        # sendall(), not send(): send() may write only part of
+                        # the program and still report success, leaving the
+                        # robot with a truncated -- and possibly still
+                        # executable -- URScript command.
+                        self._s_secondary.sendall(data.program)
+                        data.sent = True
+                    except (socket.error, socket.timeout) as ex:
+                        # Hand the failure to the sender instead of letting it
+                        # kill this thread silently.
+                        data.error = ex
+                        self.logger.error(
+                            "Failed to send program to robot: %s", ex)
                     with data.condition:
                         data.condition.notify_all()
 

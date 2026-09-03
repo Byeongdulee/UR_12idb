@@ -134,8 +134,18 @@ class UR(QObject):
         self.robot.IP = IP
         try:
             self.set_tcp(self.tcp)
-        except:
-            pass
+        except Exception:
+            # Every later move is computed against the TCP offset, so carrying
+            # on without it would silently drive the robot to the wrong place.
+            # Close the connection and let the caller see the failure rather
+            # than hand back a half-configured object. The usual cause is the
+            # robot not being in remote control mode.
+            try:
+                self.robot.close()
+            except Exception:
+                # Never let cleanup mask the original failure.
+                self.logger.exception("Failed to close robot after set_tcp error")
+            raise
         try:
             self.set_payload(1.35, (-0.003,0.01,0.037))
         except:

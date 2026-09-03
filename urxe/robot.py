@@ -94,16 +94,34 @@ class Robot(robot.Robot):
         pose = self.secmon.get_tcp()
         return pose
 
-    def set_tcp(self, tcp):
+    def set_tcp(self, tcp, timeout=5.0):
         """
         set robot flange to tool tip transformation
+
+        Waits for the robot to report back the new TCP offset, but gives up
+        after *timeout* seconds and raises. Without that bound the loop spins
+        forever whenever the robot never applies the offset -- most commonly
+        when it is not in remote control mode, where the secondary interface
+        accepts the program but silently discards it.
         """
         if isinstance(tcp, m3d.Transform):
             tcp = tcp.pose_vector
         URRobot.set_tcp(self, tcp)
-        _tcp = [0, 0, 0, 0, 0, 0]
-        while not (np.round(np.array(_tcp), 5) == np.round(np.array(tcp), 5)).all():
+        target = np.round(np.asarray(tcp, dtype=float), 5)
+        deadline = time.monotonic() + timeout
+        while True:
             _tcp = self.get_tcp()
+            if _tcp is not None:
+                if (np.round(np.asarray(_tcp, dtype=float), 5) == target).all():
+                    return
+            if time.monotonic() > deadline:
+                raise ursecmon.TimeoutException(
+                    "Robot did not apply TCP {} within {} s (last reported {}). "
+                    "Is it in remote control mode?".format(
+                        target.tolist(), timeout, _tcp))
+            # The secondary interface only refreshes at ~10 Hz, so polling
+            # faster than this just burns CPU.
+            time.sleep(0.01)
 
     def bump(self, x=0, y=0, z=0, backoff=0, force = 0, wait=True):
         #data = CheckdistanceScript
