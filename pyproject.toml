@@ -15,7 +15,8 @@ dependencies = [
     "sockets",
     "pyepics",
     "urx@git+https://github.com/Byeongdulee/python-urx.git",
-    "robodk", "math3d", "pyzbar", "pupil-apriltags", "opencv-python",
+    "robodk", "math3d", "zxing-cpp", "pupil-apriltags", "opencv-python",
+    "segno",  # test-only: generates the QR fixtures in tests/test_qr_decode.py
     "pyqt5",
 ]
 

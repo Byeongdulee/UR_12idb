@@ -78,6 +78,5 @@ def _math3d_stub():
 
 
 _stub_if_missing("math3d", _math3d_stub)
-for _name in ("cv2", "pupil_apriltags", "epics", "imutils",
-              "pyzbar", "pyzbar.pyzbar"):
+for _name in ("cv2", "pupil_apriltags", "epics", "imutils"):
     _stub_if_missing(_name)

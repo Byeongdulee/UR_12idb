@@ -1,6 +1,7 @@
 import numpy as np
 import requests
 from PIL import Image
+from collections import namedtuple
 import io
 import math
 import time
@@ -9,16 +10,20 @@ from common import m3d  # centralized math3d (4.x compat applied in common.m3d)
 import threading
 from scipy.spatial.transform import Rotation
 
-ISQR = False
+ISQR = True
 ISAPRILTAGS = True
 
 class NoUSBCameraException(Exception):
     pass
 
-#try:
-#    from pyzbar import pyzbar
-#except ImportError:
-#    ISQR = False
+# zxing-cpp replaces pyzbar, which was last released in 2022 and needs the
+# native zbar DLL. zxing-cpp ships binary wheels, decodes rotated, tilted,
+# blurred, low-contrast and inverted codes that OpenCV's own detector misses,
+# and reads Micro QR -- useful at the 23 mm holder size (see QRsavSize).
+try:
+    import zxingcpp
+except ImportError:
+    ISQR = False
 
 try:
     from pupil_apriltags import Detector
@@ -144,13 +149,49 @@ def selectAT(detections, tag_id=None, center=None):
     return min(detections,
                key=lambda d: (d.center[0]-cx)**2 + (d.center[1]-cy)**2)
 
+# Shapes matching what pyzbar returned, so every caller below -- and in
+# camera_tools and robot12idb -- is unaffected by the switch. .data stays
+# bytes because callers compare against literals such as b'stv1' and b'sav'.
+QRPoint = namedtuple("QRPoint", "x y")
+QRRect = namedtuple("QRRect", "left top width height")
+QRDecoded = namedtuple("QRDecoded", "data type rect polygon")
+
+# Micro and rMQR are included because they fit more data in the same physical
+# mark; OpenCV's detector cannot read either.
+_QR_FORMATS = (
+    zxingcpp.BarcodeFormat.QRCode,
+    zxingcpp.BarcodeFormat.MicroQRCode,
+    zxingcpp.BarcodeFormat.RMQRCode,
+) if ISQR else ()
+
+
 def decodeQR(img):
-    img2 = img
-    QRdata = pyzbar.decode(img2)
-    n = len(QRdata)
-    if n < 1:
+    """Decode every QR code in `img`, a BGR or grayscale OpenCV array.
+
+    Returns a list of QRDecoded, shaped like pyzbar's decode() output:
+
+      .data     payload as bytes
+      .type     human-readable symbology, e.g. "QR Code"
+      .rect     axis-aligned bounding box (left, top, width, height)
+      .polygon  the four corners, clockwise from top-left
+
+    The polygon order matters: analyzeroll_QR and analyzetilt_QR treat
+    consecutive points as adjacent corners, and decodeQR below averages the
+    four edge lengths to estimate distance.
+    """
+    if not ISQR:
         return []
-    return QRdata
+    results = []
+    for barcode in zxingcpp.read_barcodes(img, formats=_QR_FORMATS):
+        pos = barcode.position
+        polygon = [QRPoint(int(corner.x), int(corner.y)) for corner in
+                   (pos.top_left, pos.top_right, pos.bottom_right, pos.bottom_left)]
+        xs = [point.x for point in polygon]
+        ys = [point.y for point in polygon]
+        rect = QRRect(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+        results.append(QRDecoded(data=barcode.bytes, type=str(barcode.format),
+                                 rect=rect, polygon=polygon))
+    return results
 
 def showQRcode(QRdata, image):
     for barcode in QRdata:

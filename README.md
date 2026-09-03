@@ -40,7 +40,7 @@ https://github.com/Byeongdulee/python-urx
 
 * urrtde.py requires https://pypi.org/project/ur-rtde/. Have a look at also https://github.com/UniversalRobots/RTDE_Python_Client_Library at a folder 'ur-rtde' or change the folder name in urrtde.py.
 * math3d, https://gitlab.com/morlin/pymath3d
-* pyzbar, pip install pyzbar, note Window error message on https://pypi.org/project/pyzbar/
+* zxing-cpp, pip install zxing-cpp, https://pypi.org/project/zxing-cpp/ (QR decoding; replaced pyzbar, which needs the native zbar DLL on Windows)
 * pupil-apriltags, pip install pupil-apriltags, https://pypi.org/project/pupil-apriltags/
 * roboDK, pip install robodk, https://pypi.org/project/robodk/
 * ur_rtde, pip install ur_rtde, https://sdurobotics.gitlab.io/ur_rtde/
