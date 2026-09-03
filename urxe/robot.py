@@ -107,13 +107,17 @@ class Robot(robot.Robot):
         if isinstance(tcp, m3d.Transform):
             tcp = tcp.pose_vector
         URRobot.set_tcp(self, tcp)
-        target = np.round(np.asarray(tcp, dtype=float), 5)
+        target = np.asarray(tcp, dtype=float)
         deadline = time.monotonic() + timeout
         while True:
             _tcp = self.get_tcp()
-            if _tcp is not None:
-                if (np.round(np.asarray(_tcp, dtype=float), 5) == target).all():
-                    return
+            # Compare with a tolerance rather than rounding both sides to 5 dp
+            # and testing equality: rounding puts a hard boundary mid-range, so
+            # values differing by as little as 1e-7 (0.0999950 vs 0.0999949)
+            # land either side of it and compare unequal, spinning this loop to
+            # its timeout even though the robot did apply the TCP.
+            if _tcp is not None and np.allclose(_tcp, target, rtol=0.0, atol=1e-5):
+                return
             if time.monotonic() > deadline:
                 raise ursecmon.TimeoutException(
                     "Robot did not apply TCP {} within {} s (last reported {}). "

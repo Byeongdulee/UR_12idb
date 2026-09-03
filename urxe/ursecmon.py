@@ -110,7 +110,9 @@ class SecondaryMonitor(Thread):
         timeout used to be indistinguishable from success, so a dropped move or
         TCP change went unnoticed until the robot did the wrong thing.
         """
-        prog.strip()
+        # Assign the result: str.strip() returns a new string, so the bare
+        # call was a no-op and trailing newlines/spaces were sent to the robot.
+        prog = prog.strip()
         self.logger.debug("Enqueueing program: %s", prog)
         if not isinstance(prog, bytes):
             prog = prog.encode()
@@ -119,7 +121,8 @@ class SecondaryMonitor(Thread):
         with data.condition:
             with self._prog_queue_lock:
                 self._prog_queue.append(data)
-            data.condition.wait(timeout=timeout)
+            data.condition.wait_for(
+                lambda: data.sent or data.error is not None, timeout=timeout)
 
         # Read the outcome under the queue lock, never while holding
         # data.condition: run() takes the two locks in the opposite order, so
@@ -160,9 +163,11 @@ class SecondaryMonitor(Thread):
                         # executable -- URScript command.
                         self._s_secondary.sendall(data.program)
                         data.sent = True
-                    except (socket.error, socket.timeout) as ex:
-                        # Hand the failure to the sender instead of letting it
-                        # kill this thread silently.
+                    except Exception as ex:
+                        # Catch broadly: this thread is the only reader of the
+                        # secondary interface, so letting anything escape here
+                        # kills all robot communication silently. Hand the
+                        # failure to the sender instead.
                         data.error = ex
                         self.logger.error(
                             "Failed to send program to robot: %s", ex)
