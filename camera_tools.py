@@ -307,7 +307,8 @@ def run_pick_sequence(rob, QRdist, dist_from_base = 0.02):
         QRdist = QRdist-0.01
         print(f"Pick sequence: descending {QRdist:.3f} m to grip...")
         #rob.move_toward_camera(0, north=-0.01, east=0.0)
-        rob.put_tcp2camera()
+        if not rob.is_Z_aligned():
+            rob.put_tcp2camera()
         rob.mvr2z(-QRdist, vel=0.1)   # down (base -Z)
         rob.grab()
         time.sleep(1)
