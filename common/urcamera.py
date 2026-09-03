@@ -161,6 +161,7 @@ class camera(object):
         self.AT_physical_size = apriltagsize
         self.intrinsic_mtx = []
         self.image = None
+        self.AT_id = None       # tag_id (the number, e.g. 1, 2, ...) of the last decoded AprilTag
         self._running = False
         self._apriltag_detector = None
         self._apriltag_lock = threading.Lock()
@@ -287,6 +288,7 @@ class camera(object):
             pos = None
             return None
         self.decoded = r
+        self.AT_id = r.tag_id   # the tag number within the tag36h11 family (e.g. 1, 2, ...)
         euler, t, pose = cal_AT2pose(r)
         self.AT_euler = euler
         self.AT_translation = t
