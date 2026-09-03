@@ -122,6 +122,28 @@ def decodeAT(img=[], F=[], cam_f=camera_f, imgH=default_imgH, imgV=default_imgV)
     r = at.detect(gray, estimate_tag_pose=True, camera_params=[fx, fy, cx, cy], tag_size=AT_size)
     return r
 
+def selectAT(detections, tag_id=None, center=None):
+    # Pick a single tag out of a list of detections. All tags of the tag36h11
+    # family look alike to the detector; they are told apart by .tag_id.
+    #   tag_id : return only this tag number, or None when it is not in view.
+    #   center : (x, y) of the image center. When no tag_id is asked for and
+    #            several tags are visible, the one nearest this point wins.
+    # Returns the chosen Detection, or None.
+    if detections is None or len(detections) == 0:
+        return None
+    if tag_id is not None:
+        for d in detections:
+            if d.tag_id == tag_id:
+                return d
+        return None
+    if len(detections) == 1:
+        return detections[0]
+    if center is None:
+        return detections[0]
+    cx, cy = center
+    return min(detections,
+               key=lambda d: (d.center[0]-cx)**2 + (d.center[1]-cy)**2)
+
 def decodeQR(img):
     img2 = img
     QRdata = pyzbar.decode(img2)
@@ -147,7 +169,16 @@ class camera(object):
         self.AT_physical_size = apriltagsize
         self.intrinsic_mtx = []
         self.image = None
-        self.AT_id = None       # tag_id (the number, e.g. 1, 2, ...) of the last decoded AprilTag
+        # --- AprilTag state -------------------------------------------------
+        # AT_detections/AT_ids hold every tag seen in the last decoded frame;
+        # decoded/AT_id/AT_euler/... describe the single selected tag.
+        self.AT_detections = []
+        self.AT_ids = []
+        self.decoded = None
+        self.AT_id = None       # tag number within the family, e.g. 1, 2, ...
+        self.AT_euler = None
+        self.AT_translation = None
+        self.AT_pose = None
         self._running = False
         if len(self.IP) == 0:
             vidcap = cv2.VideoCapture(self.device)
@@ -238,34 +269,51 @@ class camera(object):
             self.camera_f = camera_f/default_imgH*self.imgH
         return ret, pilImage
 
-    def decodeAT(self):
+    def _clearAT(self):
+        # Forget the previously selected tag. Without this the AT_* attributes
+        # keep the pose of an older detection, which a caller that does not
+        # check the return value would happily use as if it were fresh.
+        self.decoded = None
+        self.AT_id = None
+        self.AT_euler = None
+        self.AT_translation = None
+        self.AT_pose = None
+
+    def decodeAT(self, tag_id=None):
+        # Decode the AprilTags in the current image and keep one of them.
+        #   tag_id : select this tag number; returns None when it is not in
+        #            view. When omitted and several tags are visible, the tag
+        #            nearest the image center is selected.
+        # Every tag seen is kept in self.AT_detections / self.AT_ids; the
+        # selected one is returned and described by self.decoded, self.AT_id,
+        # self.AT_euler, self.AT_translation and self.AT_pose.
         r = decodeAT(self.image, self.intrinsic_mtx, self.camera_f, self.imgH, self.imgV)
         if isinstance(r, type(None)):
+            self.AT_detections = []
+            self.AT_ids = []
+            self._clearAT()
             return None
-        if type(self.intrinsic_mtx) is not np.ndarray:
-            if len(self.intrinsic_mtx)==0:
-                K = np.array([[self.camera_f, 0, self.imgH/2], [0, self.camera_f, self.imgV/2], [0, 0, 1]])
-            else:
-                K = np.array(self.intrinsic_mtx)
-        else:
-            K = self.intrinsic_mtx
         self.referenceName = "AT"
-        if len(r)==1:
-            r = r[0]
-            pos = np.linalg.inv(K@r.homography*r.pose_t[2])@np.array([r.center[0], r.center[1], 1])
-            self.getATdistance(r)
+        self.AT_detections = list(r)
+        self.AT_ids = [d.tag_id for d in r]
+        # Measure "nearest the center" against the frame actually captured.
+        if self.image is not None:
+            h, w = self.image.shape[:2]
         else:
-            r = None
-            pos = None
+            w, h = self.imgH, self.imgV
+        r = selectAT(self.AT_detections, tag_id=tag_id, center=(w/2, h/2))
+        if r is None:
+            self._clearAT()
             return None
+        self.getATdistance(r)
         self.decoded = r
-        self.AT_id = r.tag_id   # the tag number within the tag36h11 family (e.g. 1, 2, ...)
+        self.AT_id = r.tag_id
         euler, t, pose = cal_AT2pose(r)
         self.AT_euler = euler
         self.AT_translation = t
         self.AT_pose = pose
         return r
-  
+
     def getATdistance(self, r):
         pgpnts = r.corners
         dist = []

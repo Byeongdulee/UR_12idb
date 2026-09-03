@@ -219,12 +219,11 @@ class tweakRobot(QMainWindow):
 
     def estimateDtag(self):
         #self.rob.camera.capture()
-        try:
-            r = self.rob.camera.decoded
-            print(r)
-        except TypeError:
+        r = self.rob.camera.decoded
+        if r is None:
             print("No AprilTag is found.")
             return
+        print(r)
         D = self.rob.camera.getATdistance(r)
         print(f"distance of the tag is {D}.")
         self.D = D
@@ -259,9 +258,8 @@ class tweakRobot(QMainWindow):
 
     def centerAT(self):
         #self.rob.camera.capture()
-        try:
-            r = self.rob.camera.decoded
-        except TypeError:
+        r = self.rob.camera.decoded
+        if r is None:
             print("No AprilTag is found.")
             return
         self.threadrun(self.rob.center_aprilTag)

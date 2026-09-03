@@ -296,7 +296,7 @@ def followhands(rob):
     cv2.destroyAllWindows()
 
 
-def run_pick_sequence(rob, QRdist, dist_from_base = 0.02):
+def run_pick_sequence(rob, QRdist, grabdepth = 0.01, dist_from_base = 0.02):
     # Pick sequence: move the TCP to the camera position, plunge down by
     # the measured tag distance, grip, hold 5 s, release, and retract.
     if not isinstance(QRdist, (int, float)) or QRdist <= 0:
@@ -304,11 +304,11 @@ def run_pick_sequence(rob, QRdist, dist_from_base = 0.02):
         return
     try:
         rob.release()
-        QRdist = QRdist-0.01
+        QRdist = QRdist + grabdepth
         print(f"Pick sequence: descending {QRdist:.3f} m to grip...")
         #rob.move_toward_camera(0, north=-0.01, east=0.0)
-        if not rob.is_Z_aligned():
-            rob.put_tcp2camera()
+        #if not rob.is_Z_aligned():
+        #    rob.put_tcp2camera()
         rob.mvr2z(-QRdist, vel=0.1)   # down (base -Z)
         rob.grab()
         time.sleep(1)
@@ -837,8 +837,11 @@ def showcamera_ip(ip=None, name='UR5'):
         time.sleep(0.1)
     cv2.destroyAllWindows()
 
-def _detect_apriltag(rob, settle=5):
-    """Capture one frame and return the AprilTag detection (or None)."""
+def _detect_apriltag(rob, settle=5, tag_id=None):
+    """Capture one frame and return the AprilTag detection (or None).
+
+    tag_id selects a specific tag number; when omitted and several tags are
+    in view, the one nearest the image center is used."""
     t0 = time.time()
     r = None
     while True:
@@ -846,8 +849,8 @@ def _detect_apriltag(rob, settle=5):
         # latest frame instead of grabbing our own.
         if not rob.camera._running:
             rob.camera.capture()
-        if rob.camera.decodeAT() is not None:       # populates rob.camera.decoded
-            r = rob.camera.decoded
+        r = rob.camera.decodeAT(tag_id=tag_id)      # populates rob.camera.decoded
+        if r is not None:
             break
         time.sleep(0.1)  # Wait a bit before trying again
         if time.time() - t0 > settle:
@@ -943,6 +946,9 @@ def search_apriltag_by_tilt(rob, ref_pos=(-0.35, -0.18, 0.5),
     roll_around_tag(rob)
     print("Finally centering the camera on the AprilTag ...")
     rob.center_camera2apriltag()
+    if rob.camera.AT_euler is None:
+        print("Lost the AprilTag while centering; cannot refresh the camera pose.")
+        return False
     rob.rotate_around_Zaxis_camera(rob.camera.AT_euler[2])  # refresh the camera pose
     rob.center_camera2apriltag()
 
