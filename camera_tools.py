@@ -910,7 +910,7 @@ def search_apriltag_by_tilt(rob, ref_pos=(-0.35, -0.18, 0.5),
     # 1. Move to the reference position with the current (gripper) TCP.
     print(f"Moving to reference position {list(ref_pos)} ...")
     rob.set_tcp(rob.tcp)
-    rob.set_orientation()  # keep the current orientation
+    rob.Zalign()  # keep the current orientation
     rob.moveto(list(ref_pos))
     rob.put_camera2tcp()  # ensure the camera is in the TCP frame
     # 2. Switch to the camera TCP so rotations pivot about the camera point.
