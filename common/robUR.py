@@ -335,7 +335,8 @@ class UR(QObject):
             m = self.get_pose().orient.get_rotation_vector().array.tolist()
         except:
             m = self.get_pose().orient.get_rotation_vector().tolist()
-        for i in range(0,2):
+        # rotation vector is returned in degrees (all three components)
+        for i in range(0,3):
             m[i] = m[i]*180/math.pi
         return m
 
@@ -356,12 +357,46 @@ class UR(QObject):
         if len(ang) != 0:
             for i in range(len(ang)):
                 myang[i] = ang[i]
-        # set rotation_vector
-        for i in range(0,2):
+        # angles are given in degrees (all three components); convert to the
+        # radian rotation vector expected by set_orientation_rad
+        for i in range(0,3):
             myang[i] = myang[i]*math.pi/180
         #v0 = self.get_xyz().tolist()
         #v0 = [v0[0], v0[1], v0[2], myanglearray[0],myanglearray[1],myanglearray[2]]
         return self.set_orientation_rad(myang, acc=DEFAULT_ACCEL, vel=DEFAULT_SPEED)
+
+    def rotvec2rpy(self, rx, ry, rz):
+        # Python equivalent of the URScript rotvec2rpy() built-in: convert a
+        # rotation vector (rx, ry, rz) to roll-pitch-yaw. Radians in, radians
+        # out, matching UR's convention R = Rz(yaw)*Ry(pitch)*Rx(roll), i.e.
+        # extrinsic-'xyz'. Done on the PC because urx's send_program is
+        # fire-and-forget and cannot return a controller-computed value.
+        o = m3d.Orientation()
+        o.set_rotation_vector(m3d.Vector(rx, ry, rz))
+        return o.to_euler('xyz')
+
+    def rpy2rotvec(self, roll, pitch, yaw):
+        # Python equivalent of the URScript rpy2rotvec() built-in: convert
+        # roll-pitch-yaw (radians, extrinsic-'xyz') to a rotation vector.
+        # Radians in, radians out; inverse of rotvec2rpy().
+        o = m3d.Orientation.new_from_euler([roll, pitch, yaw], encoding='xyz')
+        return o.get_rotation_vector().array
+
+    def Zalgn(self):
+        # Straighten the tool's Z axis to point straight down while keeping the
+        # current heading (yaw) and Cartesian position. Reads the current pose
+        # Wp = [x, y, z, rx, ry, rz], converts its rotation vector to
+        # roll-pitch-yaw, then rebuilds the rotation vector with roll/pitch set
+        # to the Z-down level orientation (roll=180 deg, pitch=0) and the
+        # original yaw preserved. (roll=pitch=0 would point the tool UP; this
+        # tool is Z-down.) Unlike the previous version, this preserves heading
+        # instead of snapping the whole orientation back to self.orientation.
+        Wp = list(self.get_pose().get_pose_vector())   # [x, y, z, rx, ry, rz]
+        rpy = self.rotvec2rpy(Wp[3], Wp[4], Wp[5])
+        rv = self.rpy2rotvec(math.pi, 0.0, rpy[2])     # roll=180 deg -> Z down, keep yaw
+        Wp[3], Wp[4], Wp[5] = rv[0], rv[1], rv[2]
+        self.set_pose(m3d.Transform(list(Wp)), acc=0.05, vel=0.05, wait=True)
+        return Wp
 
     def get_xyz(self):
         # return the Cartesian position as a numpy array
@@ -1126,9 +1161,9 @@ class UR_cam_grip(UR_grip):
         self.set_tcp(self.tcp)
 
 ## April tag functions
-    def orient2aprilTag(self):
+    def orient2aprilTag(self, tag_id=None):
         self.camera.capture()
-        r = self.camera.decodeAT()
+        r = self.camera.decodeAT(tag_id=tag_id)
         #if not hasattr(self.camera, 'decoded'):
         #    return False
         #r = self.camera.decoded
@@ -1144,7 +1179,7 @@ class UR_cam_grip(UR_grip):
         self.rotz(euler[2], acc=0.1, vel=0.2)
         return True
 
-    def _center_aprilTag(self, tol=0.05, max_iter=4):
+    def _center_aprilTag(self, tol=0.05, max_iter=4, tag_id=None):
         # Iteratively re-center the aprilTag under the camera. After each move
         # the image is recaptured and the pixel offset recomputed; the loop
         # stops once the tag center is within default_tolerance (a fraction of
@@ -1156,7 +1191,12 @@ class UR_cam_grip(UR_grip):
         if not isinstance(r, atDET):
             print("No aprilTag in the camera. Capture it and try again.")
             return False
-        
+        # Follow this one physical tag for the whole loop. Without pinning the
+        # id, a second tag drifting nearer the image center as the arm moves
+        # would silently become the new target and the loop would not settle.
+        if tag_id is None:
+            tag_id = r.tag_id
+
         for _ in range(max_iter):
             #euler, t, pos = cal_AT2pose(r)
             h, w, _ = self.camera.image.shape
@@ -1177,17 +1217,17 @@ class UR_cam_grip(UR_grip):
                 # reuse its latest frame instead of grabbing our own.
                 if not self.camera._running:
                     self.camera.capture()
-                r = self.camera.decodeAT()
+                r = self.camera.decodeAT(tag_id=tag_id)
                 if isinstance(r, atDET):
                     break
                 time.sleep(0.5)
             if time.time() - t0 >= 5:
-                print("Lost the aprilTag after moving.")
+                print(f"Lost aprilTag {tag_id} after moving.")
                 return False
         print("aprilTag centering did not converge within max_iter iterations.")
         return False
     
-    def center_camera2apriltag(self, tol=0.01, max_iter=4):
+    def center_camera2apriltag(self, tol=0.01, max_iter=4, tag_id=None):
         max_trialN = 10
         trial = 0
         done = False
@@ -1197,13 +1237,16 @@ class UR_cam_grip(UR_grip):
             # race on the shared camera).
             if not self.camera._running:
                 self.camera.capture()
-            r = self.camera.decodeAT()
+            r = self.camera.decodeAT(tag_id=tag_id)
             if isinstance(r, atDET):
                 done = True
                 break
             trial += 1
         if done:
-            self._center_aprilTag(tol=tol, max_iter=max_iter)
+            self._center_aprilTag(tol=tol, max_iter=max_iter, tag_id=self.camera.AT_id)
             return done
-        print(f"Cannot find an april tag in the camera feed.")
-        return False      
+        if tag_id is not None and len(self.camera.AT_ids) > 0:
+            print(f"Tag {tag_id} is not in the camera feed. Visible tags: {self.camera.AT_ids}.")
+        else:
+            print(f"Cannot find an april tag in the camera feed.")
+        return False

@@ -44,7 +44,8 @@
       "Bash(grep -aoE \"[a-zA-Z_][a-zA-Z0-9_.]{4,}\" visionserver)",
       "Bash(cd /tmp/urcap_x && echo \"=== rq_set_focus / rq_ preamble defs anywhere \\(binary-safe\\) ===\"; grep -raoE \"rq_[a-z_]*focus[a-z_]*|def rq_[a-z_]+\\\\\\(\" . 2>/dev/null | sort -u | head -40; echo; echo \"=== files mentioning set_focus at all ===\"; grep -ral \"set_focus\" . 2>/dev/null | head)",
       "Bash(cd /tmp/urcap_x && echo \"=== rq_xmlrpc_services.<method> used across all urcap scripts/py ===\"; grep -rhoE \"rq_xmlrpc_services\\\\.[a-zA-Z_]+\" . 2>/dev/null | sed 's/rq_xmlrpc_services\\\\.//' | sort -u; echo; echo \"=== linalg.<method> used ===\"; grep -rhoE \"linalg\\\\.[a-zA-Z_]+\" . 2>/dev/null | sed 's/linalg\\\\.//' | sort -u)",
-      "Bash(python -m py_compile camera_tools.py common/urcamera.py common/robUR.py)"
+      "Bash(python -m py_compile camera_tools.py common/urcamera.py common/robUR.py)",
+      "PowerShell(python -m py_compile common/urcamera.py common/robUR.py camera_tools.py TweakRobot.py)"
     ]
   }
 }
