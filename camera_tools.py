@@ -902,7 +902,7 @@ def search_apriltag_by_tilt(rob, ref_pos=(-0.35, -0.18, 0.5),
 
     Returns True if a tag was found and centered, False otherwise.
     """
-    ref_pos=(-0.0, -0.4, 0.5)
+    #ref_pos=(-0.0, -0.4, 0.5)
     # 1. Move to the reference position with the current (gripper) TCP.
     print(f"Moving to reference position {list(ref_pos)} ...")
     rob.set_tcp(rob.tcp)
