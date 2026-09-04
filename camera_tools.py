@@ -442,15 +442,12 @@ def showcamera(rob, codetype = 0, obj_distance=0.15):
             flipflop = False
 
         # Display 
-        isambient = False
+#        isambient = False
         if codetype==1:
             QRcode = decodeQR(frame)
             rob.camera.image = frame
             data, rectcoord, qrsize, dist = rob.camera.decode()
             if len(data) ==1:
-                if data == b'sav':
-                    #print(qrd)
-                    isambient = True
                 QRpos = rob.camera.QRposition
                 QRdist = rob.camera.QRdistance
         #        if len(rob.camera.QRposition)>0:
