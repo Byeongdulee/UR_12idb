@@ -388,7 +388,7 @@ class UR(QObject):
         o = m3d.Orientation.new_from_euler([roll, pitch, yaw], encoding='xyz')
         return o.get_rotation_vector().array
 
-    def Zalgn(self):
+    def Zalign(self):
         # Straighten the tool's Z axis to point straight down while keeping the
         # current heading (yaw) and Cartesian position. Reads the current pose
         # Wp = [x, y, z, rx, ry, rz], converts its rotation vector to
@@ -1167,9 +1167,10 @@ class UR_cam_grip(UR_grip):
         self.set_tcp(self.tcp)
 
 ## April tag functions
-    def orient2aprilTag(self, tag_id=None):
-        self.camera.capture()
-        r = self.camera.decodeAT(tag_id=tag_id)
+    def orient2aprilTag(self, tag_id=None, settle=5):
+        if not hasattr(self.camera, 'image'):
+            return False
+        r = cameratools._detect_apriltag(self, settle=settle, tag_id=tag_id)
         #if not hasattr(self.camera, 'decoded'):
         #    return False
         #r = self.camera.decoded
@@ -1185,15 +1186,20 @@ class UR_cam_grip(UR_grip):
         self.rotz(euler[2], acc=0.1, vel=0.2)
         return True
 
-    def _center_aprilTag(self, tol=0.05, max_iter=4, tag_id=None):
+    def _center_aprilTag(self, tol=0.05, max_iter=4, tag_id=None, settle=5):
         # Iteratively re-center the aprilTag under the camera. After each move
         # the image is recaptured and the pixel offset recomputed; the loop
         # stops once the tag center is within default_tolerance (a fraction of
         # the image size, i.e. 5% by default) of the image center, or after
         # max_iter moves.
+        # Detection goes through camera_tools._detect_apriltag, which keeps
+        # recapturing for `settle` seconds instead of judging a single frame.
+        # The camera refocuses while the arm moves, so the first frames after a
+        # move are blurred and decode to nothing; a single-shot decode would
+        # abort the loop there.
         if not hasattr(self.camera, 'image'):
             return False
-        r = self.camera.decoded
+        r = cameratools._detect_apriltag(self, settle=settle, tag_id=tag_id)
         if not isinstance(r, atDET):
             print("No aprilTag in the camera. Capture it and try again.")
             return False
@@ -1216,43 +1222,27 @@ class UR_cam_grip(UR_grip):
             dX = -dx/self.camera.camera_f*QRdist
             dY = dy/self.camera.camera_f*QRdist
             self.move_toward_camera(distance=0, north=dY, east=dX, acc=0.05, vel=0.05)
-            # recapture and re-decode to measure the new offset
-            t0 = time.time()
-            while time.time() - t0 < 5:  # timeout after 5 seconds
-                # When a live display loop (showcamera) is already capturing,
-                # reuse its latest frame instead of grabbing our own.
-                if not self.camera._running:
-                    self.camera.capture()
-                r = self.camera.decodeAT(tag_id=tag_id)
-                if isinstance(r, atDET):
-                    break
-                time.sleep(0.5)
-            if time.time() - t0 >= 5:
+            # recapture and re-decode to measure the new offset, retrying until
+            # the camera has refocused after the move
+            r = cameratools._detect_apriltag(self, settle=settle, tag_id=tag_id)
+            if not isinstance(r, atDET):
                 print(f"Lost aprilTag {tag_id} after moving.")
                 return False
         print("aprilTag centering did not converge within max_iter iterations.")
         return False
     
-    def center_camera2apriltag(self, tol=0.01, max_iter=4, tag_id=None):
-        max_trialN = 10
-        trial = 0
-        done = False
-        while trial<max_trialN:
-            # When a live display loop (showcamera) is already capturing, reuse
-            # its latest frame instead of grabbing our own (avoids a two-reader
-            # race on the shared camera).
-            if not self.camera._running:
-                self.camera.capture()
-            r = self.camera.decodeAT(tag_id=tag_id)
-            if isinstance(r, atDET):
-                done = True
-                break
-            trial += 1
-        if done:
-            self._center_aprilTag(tol=tol, max_iter=max_iter, tag_id=self.camera.AT_id)
-            return done
-        if tag_id is not None and len(self.camera.AT_ids) > 0:
-            print(f"Tag {tag_id} is not in the camera feed. Visible tags: {self.camera.AT_ids}.")
-        else:
-            print(f"Cannot find an april tag in the camera feed.")
-        return False
+    def center_camera2apriltag(self, tol=0.01, max_iter=4, tag_id=None, settle=5):
+        # Locate the tag before centering, so its id is pinned for the whole
+        # run and a missing tag is reported against what is actually in view.
+        # _detect_apriltag keeps recapturing for `settle` seconds rather than
+        # spinning on single frames; the arm usually arrives here right after a
+        # move, with the camera still refocusing.
+        r = cameratools._detect_apriltag(self, settle=settle, tag_id=tag_id)
+        if not isinstance(r, atDET):
+            if tag_id is not None and len(self.camera.AT_ids) > 0:
+                print(f"Tag {tag_id} is not in the camera feed. Visible tags: {self.camera.AT_ids}.")
+            else:
+                print(f"Cannot find an april tag in the camera feed.")
+            return False
+        self._center_aprilTag(tol=tol, max_iter=max_iter, tag_id=r.tag_id, settle=settle)
+        return True

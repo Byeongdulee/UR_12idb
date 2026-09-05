@@ -2,6 +2,7 @@ import numpy as np
 import requests
 from PIL import Image
 from collections import namedtuple
+import atexit
 import io
 import math
 import time
@@ -103,28 +104,82 @@ __license__ = "LGPLv3"
 # 543, 0.19
 # 587, 0.14
 
+# One AprilTag detector for the whole process, and one lock around every
+# detection. pupil_apriltags' Detector is a thin ctypes wrapper on libapriltag,
+# and two things made the old "build a Detector per call" code crash the
+# interpreter with a segfault:
+#   * Detector.__del__ destroys the tag family first and then calls
+#     apriltag_detector_destroy(), which walks the families still registered
+#     with the detector -- it reads the block it just freed. One decode per
+#     frame meant one such destructor per frame, corrupting the heap until an
+#     unrelated allocation fell over.
+#   * showcamera() detects in its display loop while a robot action dispatched
+#     to a worker thread detects at the same time. libapriltag is not safe to
+#     drive concurrently, and ctypes drops the GIL for the duration of the call.
+# Keeping a single detector alive for the life of the process removes the
+# per-frame destructor, and _AT_LOCK serializes the two threads.
+_AT_DETECTOR = None
+_AT_LOCK = threading.RLock()
+
+def _disarm_AT_detector():
+    # The one remaining destructor is the shared detector's own, at interpreter
+    # shutdown -- which turns a clean exit into a core dump for the same reason.
+    # Detector.__del__ does nothing when tag_detector_ptr is None, so clear it
+    # and let the OS reclaim the C detector as the process dies.
+    global _AT_DETECTOR
+    at = _AT_DETECTOR
+    if at is not None and hasattr(at, 'tag_detector_ptr'):
+        at.tag_detector_ptr = None
+    _AT_DETECTOR = None
+
+def get_AT_detector():
+    """Return the process-wide AprilTag detector, building it on first use.
+
+    Returns None when pupil_apriltags is not installed."""
+    global _AT_DETECTOR
+    if not ISAPRILTAGS:
+        return None
+    with _AT_LOCK:
+        if _AT_DETECTOR is None:
+            at = Detector(families='tag36h11',
+                          nthreads=1,
+                          quad_decimate=1.0,
+                          quad_sigma=0.0,
+                          refine_edges=1,
+                          decode_sharpening=0.25,
+                          debug=0)
+            atexit.register(_disarm_AT_detector)
+            _AT_DETECTOR = at
+        return _AT_DETECTOR
+
+def detect_AT(gray, camera_params, tag_size=AT_size):
+    """Detect AprilTags in a grayscale frame using the shared detector.
+
+    Every AprilTag detection in this package must go through here (or through
+    decodeAT below), so that detections from the display loop and from threaded
+    robot actions never run at the same time."""
+    with _AT_LOCK:
+        at = get_AT_detector()
+        if at is None:
+            return []
+        return at.detect(gray, estimate_tag_pose=True,
+                         camera_params=camera_params, tag_size=tag_size)
+
 def decodeAT(img=[], F=[], cam_f=camera_f, imgH=default_imgH, imgV=default_imgV):
-    at = Detector(families='tag36h11',
-                        nthreads=1,
-                        quad_decimate=1.0,
-                        quad_sigma=0.0,
-                        refine_edges=1,
-                        decode_sharpening=0.25,
-                        debug=0)
     if isinstance(img, type(None)):
         return []
     if len(img)==0:
         print("empty image")
         return
 
-    if len(F)==0:    
+    if len(F)==0:
         F = [[cam_f, 0, imgH/2], [0, cam_f, imgV/2], [0, 0, 1]]
     fx = F[0][0]
     fy = F[1][1]
     cx = F[0][2]
     cy = F[1][2]
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    r = at.detect(gray, estimate_tag_pose=True, camera_params=[fx, fy, cx, cy], tag_size=AT_size)
+    r = detect_AT(gray, [fx, fy, cx, cy], tag_size=AT_size)
     return r
 
 def selectAT(detections, tag_id=None, center=None):

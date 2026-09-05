@@ -15,9 +15,12 @@ dependencies = [
     "sockets",
     "pyepics",
     "urx@git+https://github.com/Byeongdulee/python-urx.git",
+    "ur_rtde",
     "robodk", "math3d", "zxing-cpp", "pupil-apriltags", "opencv-python",
     "segno",  # test-only: generates the QR fixtures in tests/test_qr_decode.py
     "pyqt5",
+    "requests",
+    "scipy",
 ]
 
 requires-python = ">=3.8.1"

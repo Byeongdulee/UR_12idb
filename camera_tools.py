@@ -8,9 +8,9 @@ import numpy as np
 import cv2
 from common.urcamera import decodeQR, showQRcode, default_imgH, default_imgV, focus_threshold, camera_f
 from common.urcamera import decodeAT, cal_AT2pose
+from common.urcamera import detect_AT
 from common.urcamera import camera
 from threading import Thread
-from pupil_apriltags import Detector
 import json
 import os
 
@@ -324,7 +324,7 @@ def run_pick_sequence(rob, QRdist, grabdepth = 0.01, dist_from_base = 0.02):
         print(f"Pick sequence failed: {ex}")
 
 
-def average_apriltag_pose(cam, at, camera_params, min_margin, N=10):
+def average_apriltag_pose(cam, camera_params, min_margin, N=10):
     """Capture N frames and collect the AprilTag pose from each frame that has
     exactly one valid detection. Returns (eulers, dists) lists (length <= N),
     used for time-averaging the tag pose to reduce per-frame noise."""
@@ -340,9 +340,7 @@ def average_apriltag_pose(cam, at, camera_params, min_margin, N=10):
         if not isinstance(f2, np.ndarray):
             f2 = np.array(f2)
         g2 = cv2.cvtColor(f2, cv2.COLOR_RGB2GRAY)
-        dets = at.detect(g2, estimate_tag_pose=True,
-                         camera_params=camera_params,
-                         tag_size=cam.AT_physical_size)
+        dets = detect_AT(g2, camera_params, tag_size=cam.AT_physical_size)
         dets = [d for d in dets
                 if d.hamming == 0 and d.decision_margin >= min_margin]
         if len(dets) != 1 or dets[0].pose_R is None:
@@ -389,13 +387,6 @@ def showcamera(rob, codetype = 0, obj_distance=0.15):
     QRpos = []
     QRdist = None
     rob.camera.AT_physical_size = 0.010
-    at = Detector(families='tag36h11',
-                       nthreads=1,
-                       quad_decimate=1.0,
-                       quad_sigma=0.0,
-                       refine_edges=1,
-                       decode_sharpening=0.25,
-                       debug=0)
     worker = None  # background thread for blocking robot actions
     def dispatch(fn, *args, **kwargs):
         # Run a blocking robot action off the display loop so the camera feed
@@ -466,8 +457,9 @@ def showcamera(rob, codetype = 0, obj_distance=0.15):
         # Principal point is taken as the image center of the current frame.
         fx = fy = rob.camera.camera_f
         cx, cy = w / 2.0, h / 2.0
-        r = at.detect(gray, estimate_tag_pose=True,
-                      camera_params=[fx, fy, cx, cy],
+        # Shared detector + lock: a robot action dispatched to a worker thread
+        # detects too, and libapriltag cannot be driven from two threads at once.
+        r = detect_AT(gray, [fx, fy, cx, cy],
                       tag_size=rob.camera.AT_physical_size)
         # tag16h5 is very prone to false positives (spurious detections in
         # noise/texture when no real tag is present). Reject them by requiring
@@ -654,7 +646,7 @@ def showcamera(rob, codetype = 0, obj_distance=0.15):
             ''' time average the AprilTag pose over 10 frames and print the average translation and rotation. '''
             N = 20
             eulers, dists = average_apriltag_pose(
-                rob.camera, at, [fx, fy, cx, cy], AT_MIN_MARGIN, N=N)
+                rob.camera, [fx, fy, cx, cy], AT_MIN_MARGIN, N=N)
             if len(eulers) == 0:
                 print("Time average: no valid AprilTag detections. Point the camera at a tag.")
             else:
@@ -744,13 +736,6 @@ def showcamera_ip(ip=None, name='UR5'):
     print(f"Opening IP camera at {ip} ...")
     cam = camera(ip)                      # connectiontype == 'ip'
     cam.AT_physical_size = 0.010
-    at = Detector(families='tag36h11',
-                  nthreads=1,
-                  quad_decimate=1.0,
-                  quad_sigma=0.0,
-                  refine_edges=1,
-                  decode_sharpening=0.25,
-                  debug=0)
     AT_MIN_MARGIN = 30.0
     flipflop = True
     w = h = None
@@ -779,9 +764,7 @@ def showcamera_ip(ip=None, name='UR5'):
         gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
         fx = fy = cam.camera_f
         cx, cy = w / 2.0, h / 2.0
-        r = at.detect(gray, estimate_tag_pose=True,
-                      camera_params=[fx, fy, cx, cy],
-                      tag_size=cam.AT_physical_size)
+        r = detect_AT(gray, [fx, fy, cx, cy], tag_size=cam.AT_physical_size)
         r = [d for d in r if d.hamming == 0 and d.decision_margin >= AT_MIN_MARGIN]
         euler = None
         if len(r) == 1:
@@ -818,7 +801,7 @@ def showcamera_ip(ip=None, name='UR5'):
         if key == ord('t'):
             N = 10
             eulers, dists = average_apriltag_pose(
-                cam, at, [fx, fy, cx, cy], AT_MIN_MARGIN, N=N)
+                cam, [fx, fy, cx, cy], AT_MIN_MARGIN, N=N)
             if len(eulers) == 0:
                 print("Time average: no valid AprilTag detections.")
             else:
@@ -864,15 +847,27 @@ def roll_around_tag(rob, step=5, tol=1e-2, max_steps=24):
         print("No AprilTag in view; cannot roll around the tag.")
         return False
     distance = rob.camera.getATdistance(r)
+    print(f"AprilTag is at {distance} from the wrist camera.")
     newtcp = list(rob.camtcp)
     newtcp[2] = distance
     rob.set_tcp(newtcp)
     step_in_radians = step / 180 * math.pi
-    target_rotvec = np.array([0, -math.pi, 0])  # face-down rotation vector
+    # Face-down rotation vector, built the same way rob.Zalign() does it:
+    # roll = 180 deg, pitch = 0, and the heading (yaw) the arm already has.
+    # A hard-coded [0, -pi, 0] is Z-down too, but at a yaw of its own, so
+    # tilting toward it would drag the camera around Z on the way.
+    Wp = list(rob.get_pose().get_pose_vector())     # [x, y, z, rx, ry, rz]
+    rpy = rob.rotvec2rpy(Wp[3], Wp[4], Wp[5])
+    target_rotvec = np.asarray(rob.rpy2rotvec(math.pi, 0.0, rpy[2]), dtype=float)
     for _ in range(max_steps):
         pose = rob.get_pose()
         v = pose.orient.get_rotation_vector().array
-        v[1] = -1*abs(v[1])  # ensure the camera is facing down (negative Y)
+        # A rotation vector and its negative describe the same half-turn, so
+        # put v on the same side as the target before differencing them.
+        # (This replaces the old "force ry negative" trick, which only worked
+        # for the fixed [0, -pi, 0] target.)
+        if np.dot(v, target_rotvec) < 0:
+            v = -v
         diff_rotvec = target_rotvec - v
         if np.linalg.norm(diff_rotvec) < tol:
             print("Camera is face-down.")
@@ -889,7 +884,7 @@ def roll_around_tag(rob, step=5, tol=1e-2, max_steps=24):
     print("Reached max_steps before the camera faced down.")
     return False
 
-def search_apriltag_by_tilt(rob, ref_pos=(-0.35, -0.18, 0.5),
+def search_apriltag_by_tilt(rob, ref_pos=[],
                             tilt_range=10, tilt_step=5):
     """Search for an AprilTag by tilting the camera at a reference position.
 
@@ -904,6 +899,8 @@ def search_apriltag_by_tilt(rob, ref_pos=(-0.35, -0.18, 0.5),
     Returns True if a tag was found and centered, False otherwise.
     """
     #ref_pos=(-0.0, -0.4, 0.5)
+    if len(ref_pos) ==0:
+        ref_pos = [-0.22, -0.374598093, 0.200013817, -2.18860535, 2.25379435, -5.53757805e-05]
     # 1. Move to the reference position with the current (gripper) TCP.
     print(f"Moving to reference position {list(ref_pos)} ...")
     rob.set_tcp(rob.tcp)
@@ -937,6 +934,9 @@ def search_apriltag_by_tilt(rob, ref_pos=(-0.35, -0.18, 0.5),
     if found is None:
         print("No AprilTag found within the tilt search range.")
         return False
+    print("Moving up 1 cm ...")
+    rob.mvr2z(0.01)
+    print("Centering camera ...")
     rob.center_camera2apriltag()
     # 3./4. Face the camera down keeping the tag in view, then fine-center.
     print("Tipping camera face-down while keeping the tag in view ...")
@@ -946,7 +946,7 @@ def search_apriltag_by_tilt(rob, ref_pos=(-0.35, -0.18, 0.5),
     if rob.camera.AT_euler is None:
         print("Lost the AprilTag while centering; cannot refresh the camera pose.")
         return False
-    rob.rotate_around_Zaxis_camera(rob.camera.AT_euler[2])  # refresh the camera pose
+    rob.rotate_around_Zaxis_camera(180+rob.camera.AT_euler[2])  # refresh the camera pose
     rob.center_camera2apriltag()
 
     # Descend in 5 cm steps until the tag is ~0.2 m from the camera.
@@ -956,7 +956,7 @@ def search_apriltag_by_tilt(rob, ref_pos=(-0.35, -0.18, 0.5),
         r = _detect_apriltag(rob)
     # Re-align the camera's Z rotation to the tag after descending.
     if r is not None:
-        rob.rotate_around_Zaxis_camera(rob.camera.AT_euler[2])
+        rob.rotate_around_Zaxis_camera(180+rob.camera.AT_euler[2])
 
     return True
 
