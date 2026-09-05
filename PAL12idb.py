@@ -15,6 +15,78 @@ needle_clear_height = 0.20
 mixer_height = 0.05
 grab_depth = 0.01
 flowcell_ID = 1
+from epics import caget, caput
+sampletableID = 1
+cleaningstationID1 = 2
+cleaningstationID2 = 3
+mixerstationID = 4
+mixer_cleaningstationID = 5
+
+def get_position(ID):
+    pos = [0] * 6
+    pos[0] = caget(f'12idUR:WaypointL:{ID}:X')
+    pos[1] = caget(f'12idUR:WaypointL:{ID}:Y')
+    pos[2] = caget(f'12idUR:WaypointL:{ID}:Z')
+    pos[3] = caget(f'12idUR:WaypointL:{ID}:RX')
+    pos[4] = caget(f'12idUR:WaypointL:{ID}:RY')
+    pos[5] = caget(f'12idUR:WaypointL:{ID}:RZ')
+    return pos
+
+def set_position(ID, pos):
+    caput(f'12idUR:WaypointL:{ID}:X', pos[0])
+    caput(f'12idUR:WaypointL:{ID}:Y', pos[1])
+    caput(f'12idUR:WaypointL:{ID}:Z', pos[2])
+    caput(f'12idUR:WaypointL:{ID}:RX', pos[3])
+    caput(f'12idUR:WaypointL:{ID}:RY', pos[4])
+    caput(f'12idUR:WaypointL:{ID}:RZ', pos[5])
+
+def get_sampletable_position():
+    global sample_table, sampletableID
+    sample_table = get_position(sampletableID)
+    return sample_table
+
+def set_sampletable_position(pos):
+    global sample_table,sampletableID
+    sample_table = pos
+    set_position(sampletableID, pos)
+
+def get_cleaningstation_position(ID):
+    global cleaning_station1, cleaning_station2
+    if ID == 1:
+        cleaning_station1 = get_position(cleaningstationID1)
+        return cleaning_station1
+    else:
+        cleaning_station2 = get_position(cleaningstationID2)
+        return cleaning_station2
+
+def set_cleaningstation_position(ID, pos):
+    global cleaning_station1, cleaning_station2
+    if ID == 1:
+        cleaning_station1 = pos
+        set_position(cleaningstationID1, pos)
+    else:
+        cleaning_station2 = pos
+        set_position(cleaningstationID2, pos)
+
+def get_mixerstation_position():
+    global mixer_station
+    mixer_station = get_position(mixerstationID)
+    return mixer_station
+
+def set_mixerstation_position(pos):
+    global mixer_station
+    mixer_station = pos
+    set_position(mixerstationID, pos)
+
+def get_mixer_cleaningstation_position():
+    global mixer_cleaning_station
+    mixer_cleaning_station = get_position(mixer_cleaningstationID)
+    return mixer_cleaning_station
+
+def set_mixer_cleaningstation_position(pos):
+    global mixer_cleaning_station
+    mixer_cleaning_station = pos
+    set_position(mixer_cleaningstationID, pos)
 
 # Basic operation functions
 def pickup(robot, height = needle_clear_height):
@@ -59,48 +131,48 @@ def transport(robot, p1, p2, height = needle_clear_height):
 # mixer head to its cleaning station. The robot is assumed to be empty.
 def mixer2cleaningstation(robot):
     if flowcell_ID == 1:
-        cleaning_station = cleaning_station1
+        cleaning_station = get_cleaningstation_position(1)
     else:
-        cleaning_station = cleaning_station2
-    transport(robot, mixer_station, cleaning_station, height=mixer_height)
+        cleaning_station = get_cleaningstation_position(2)
+    transport(robot, get_mixerstation_position(), cleaning_station, height=mixer_height)
 
 # mixer head to the mixer station. The robot is assumed to be empty.
 def mixer2mixingstation(robot):
     if flowcell_ID == 1:
-        cleaning_station = cleaning_station1
+        cleaning_station = get_cleaningstation_position(1)
     else:
-        cleaning_station = cleaning_station2
-    transport(robot, cleaning_station, mixer_station, height=mixer_height)
+        cleaning_station = get_cleaningstation_position(2)
+    transport(robot, cleaning_station, get_mixerstation_position(), height=mixer_height)
 
 # Bring the flowcell parked at the cleaning station to the beam, ready for data collection. The robot is assumed to be empty.
 # This is for measuring water background. The flowcell is not loaded with sample.
 def load_flowcell_from_cleaningstation_to_beam(robot):
     if flowcell_ID == 1:
-        cleaning_station = cleaning_station1
+        cleaning_station = get_cleaningstation_position(1)
     else:
-        cleaning_station = cleaning_station2
-    transport(robot, cleaning_station, sample_table, height=needle_clear_height)
+        cleaning_station = get_cleaningstation_position(2)
+    transport(robot, cleaning_station, get_sampletable_position(), height=needle_clear_height)
 
 # Bring the flowcell from the beam to the cleaning station. 
 def load_flowcell_from_beam_to_cleaningstation(robot):
     if flowcell_ID == 1:
-        cleaning_station = cleaning_station1
+        cleaning_station = get_cleaningstation_position(1)
     else:
-        cleaning_station = cleaning_station2
-    transport(robot, sample_table, cleaning_station, height=needle_clear_height)
+        cleaning_station = get_cleaningstation_position(2)
+    transport(robot, get_sampletable_position(), cleaning_station, height=needle_clear_height)
 
 # Bring the flowcell parked at the cleaning station to the mixing station, 
 # Ready to draw solution from the mixer. The robot is assumed to be empty.
 def ready_flowcell_to_draw(robot):
     if flowcell_ID == 1:
-        cleaning_station = cleaning_station1
+        cleaning_station = get_cleaningstation_position(1)
     else:
-        cleaning_station = cleaning_station2
+        cleaning_station = get_cleaningstation_position(2)
     # draw solution and put it in the beam
     # assuming the robot is empty.
     robot.moveto(cleaning_station)
     pickup(robot)
-    p2 = list(mixer_station)
+    p2 = list(get_mixerstation_position())
     p2[2] = p2[2]-distance_gripper_tag+needle_clear_height
     robot.moveto(p2)
     robot.bump(z=-1,backoff=0.002)
@@ -108,7 +180,7 @@ def ready_flowcell_to_draw(robot):
 # after drawing, the robot is holding the flowcell. Move it to the beam and drop it.
 def load_sample_to_beam(robot):
     robot.mvr2z(needle_clear_height)
-    p2 = list(sample_table)
+    p2 = list(get_sampletable_position())
     p2[2] = p2[2]-distance_gripper_tag+needle_clear_height
     robot.moveto(p2)
     dropdown(robot)
@@ -117,12 +189,12 @@ def load_sample_to_beam(robot):
 def return_sample(robot):
     # move up to the sample table height.
     p = robot.get_pos()
-    p[2] = sample_table[2]
+    p[2] = get_sampletable_position()[2]
     robot.moveto(p)
     # move to the sample table
-    robot.moveto(sample_table)
+    robot.moveto(get_sampletable_position())
     robot.pickup()
-    p2 = list(mixer_station)
+    p2 = list(get_mixerstation_position())
     p2[2] = p2[2]-distance_gripper_tag+needle_clear_height
     robot.moveto(p2)
     robot.bump(z=-1,backoff=0.005)
@@ -130,9 +202,9 @@ def return_sample(robot):
 # after aspirating, move the flowcell to the cleaning station and drop it.
 def wash_flowcell_after_return(robot):
     if flowcell_ID == 1:
-        cleaning_station = cleaning_station1
+        cleaning_station = get_cleaningstation_position(1)
     else:
-        cleaning_station = cleaning_station2
+        cleaning_station = get_cleaningstation_position(2)
     robot.mvr2z(needle_clear_height)
     robot.moveto(cleaning_station)
     dropdown(robot, height=mixer_height)
@@ -163,14 +235,14 @@ def locate_apriltag(robot, pos = ''):
     p = robot.get_pose()
     v = p.get_pose_vector().tolist()
     if pos == 'sample_table':
-        sample_table = v
+        set_sampletable_position(v)
     if pos == 'cleaning_station':
         if flowcell_ID == 1:
-            cleaning_station1 = v
+            set_cleaningstation_position(1, v)
         else:
-            cleaning_station2 = v   
+            set_cleaningstation_position(2, v)
     if pos == 'mixer_cleaning_station':
-        mixer_cleaning_station = v
+        set_mixer_cleaningstation_position(v)
     if pos == 'mixer_station':
-        mixer_station = v
+        set_mixerstation_position(v)
     return v
