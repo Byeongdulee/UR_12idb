@@ -817,14 +817,18 @@ def showcamera_ip(ip=None, name='UR5'):
         time.sleep(0.1)
     cv2.destroyAllWindows()
 
-def _detect_apriltag(rob, settle=5, tag_id=None):
+def _detect_apriltag(rob, settle=5, tag_id=None, stop_event=None):
     """Capture one frame and return the AprilTag detection (or None).
 
     tag_id selects a specific tag number; when omitted and several tags are
-    in view, the one nearest the image center is used."""
+    in view, the one nearest the image center is used. stop_event, if given,
+    is checked each poll so an operator abort doesn't have to wait out the
+    full settle timeout."""
     t0 = time.time()
     r = None
     while True:
+        if stop_event is not None and stop_event.is_set():
+            return None
         # When a live display loop (showcamera) is already capturing, reuse its
         # latest frame instead of grabbing our own.
         if not rob.camera._running:
@@ -838,11 +842,13 @@ def _detect_apriltag(rob, settle=5, tag_id=None):
             return None
     return r
 
-def roll_around_tag(rob, step=5, tol=1e-2, max_steps=24):
+def roll_around_tag(rob, step=5, tol=1e-2, max_steps=24, stop_event=None):
     """Tilt the camera toward face-down in steps of at most ``step`` degrees,
     pivoting about the tag so it stays centered, until the camera faces down
-    (within ``tol`` radians) or the tag is lost / ``max_steps`` is reached."""
-    r = _detect_apriltag(rob)
+    (within ``tol`` radians) or the tag is lost / ``max_steps`` is reached.
+    Checked against stop_event before each step, so an abort takes effect
+    between moves rather than only after max_steps."""
+    r = _detect_apriltag(rob, stop_event=stop_event)
     if r is None:
         print("No AprilTag in view; cannot roll around the tag.")
         return False
@@ -860,6 +866,9 @@ def roll_around_tag(rob, step=5, tol=1e-2, max_steps=24):
     rpy = rob.rotvec2rpy(Wp[3], Wp[4], Wp[5])
     target_rotvec = np.asarray(rob.rpy2rotvec(math.pi, 0.0, rpy[2]), dtype=float)
     for _ in range(max_steps):
+        if stop_event is not None and stop_event.is_set():
+            print("AprilTag search stopped by operator.")
+            return False
         pose = rob.get_pose()
         v = pose.orient.get_rotation_vector().array
         # A rotation vector and its negative describe the same half-turn, so
@@ -885,7 +894,7 @@ def roll_around_tag(rob, step=5, tol=1e-2, max_steps=24):
     return False
 
 def search_apriltag_by_tilt(rob, ref_pos=[],
-                            tilt_range=10, tilt_step=5):
+                            tilt_range=10, tilt_step=5, stop_event=None):
     """Search for an AprilTag by tilting the camera at a reference position.
 
     Sequence:
@@ -896,21 +905,32 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
       4. Once found, tip the camera face-down while keeping the tag in view,
          then run center_camera2apriltag().
 
-    Returns True if a tag was found and centered, False otherwise.
+    stop_event, if given, is a threading.Event checked before each move in
+    every loop below; a caller that also calls rob.robot.stopj() to interrupt
+    whatever move is in flight can rely on this to stop the sequence at the
+    next opportunity rather than pressing on to the next step. Every abort or
+    failure path returns through the same except block, so the TCP is always
+    restored no matter which phase (tilt search, face-down roll, or descent)
+    was interrupted.
+
+    Returns True if a tag was found and centered, False otherwise (including
+    on operator-requested abort).
     """
     #ref_pos=(-0.0, -0.4, 0.5)
     if len(ref_pos) ==0:
         ref_pos = [-0.22, -0.374598093, 0.200013817, -2.18860535, 2.25379435, -5.53757805e-05]
-    # 1. Move to the reference position with the current (gripper) TCP.
-    print(f"Moving to reference position {list(ref_pos)} ...")
-    rob.set_tcp(rob.tcp)
-    rob.Zalign()  # keep the current orientation
-    rob.moveto(list(ref_pos))
-    rob.put_camera2tcp()  # ensure the camera is in the TCP frame
-    # 2. Switch to the camera TCP so rotations pivot about the camera point.
-    #rob.set_tcp(rob.camtcp)
-    found = None
+    if stop_event is not None and stop_event.is_set():
+        return False
     try:
+        # 1. Move to the reference position with the current (gripper) TCP.
+        print(f"Moving to reference position {list(ref_pos)} ...")
+        rob.set_tcp(rob.tcp)
+        rob.Zalign()  # keep the current orientation
+        rob.moveto(list(ref_pos))
+        rob.put_camera2tcp()  # ensure the camera is in the TCP frame
+        # 2. Switch to the camera TCP so rotations pivot about the camera point.
+        #rob.set_tcp(rob.camtcp)
+        found = None
         base = rob.get_pose()               # camera-TCP pose at the reference
         base_pos = base.get_pos()
         angles = list(range(-tilt_range, tilt_range+1, tilt_step))
@@ -918,47 +938,61 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
         grid = sorted(((ax, ay) for ax in angles for ay in angles),
                       key=lambda a: a[0] ** 2 + a[1] ** 2)
         for (ax, ay) in grid:
+            if stop_event is not None and stop_event.is_set():
+                print("AprilTag search stopped by operator.")
+                return False
             t = base.copy()                 # fresh copy; leaves base untouched
             t.orient.rotate_xt(ax / 180 * math.pi)
             t.orient.rotate_yt(ay / 180 * math.pi)
             t.set_pos(base_pos)             # pivot in place about the camera
             rob.set_pose(t, acc=0.2, vel=0.3, wait=True)
             #time.sleep(5)                  # let the image settle after a move
-            if _detect_apriltag(rob) is not None:
+            if _detect_apriltag(rob, stop_event=stop_event) is not None:
                 print(f"AprilTag found at tilt (x={ax}, y={ay}) deg.")
                 found = (ax, ay)
                 break
+        if found is None:
+            print("No AprilTag found within the tilt search range.")
+            return False
+
+        print("Moving up 1 cm ...")
+        rob.mvr2z(0.01)
+        print("Centering camera ...")
+        rob.center_camera2apriltag()
+        # 3./4. Face the camera down keeping the tag in view, then fine-center.
+        print("Tipping camera face-down while keeping the tag in view ...")
+        if not roll_around_tag(rob, stop_event=stop_event):
+            return False
+        if stop_event is not None and stop_event.is_set():
+            return False
+        print("Finally centering the camera on the AprilTag ...")
+        rob.center_camera2apriltag()
+        if rob.camera.AT_euler is None:
+            print("Lost the AprilTag while centering; cannot refresh the camera pose.")
+            return False
+        rob.rotate_around_Zaxis_camera(180+rob.camera.AT_euler[2])  # refresh the camera pose
+        rob.center_camera2apriltag()
+
+        # Descend in 5 cm steps until the tag is ~0.2 m from the camera.
+        r = _detect_apriltag(rob, stop_event=stop_event)
+        while r is not None and rob.camera.QRdistance > 0.2:
+            if stop_event is not None and stop_event.is_set():
+                print("AprilTag search stopped by operator.")
+                return False
+            rob.mvr2z(-0.05)
+            r = _detect_apriltag(rob, stop_event=stop_event)
+        # Re-align the camera's Z rotation to the tag after descending.
+        if r is not None:
+            rob.rotate_around_Zaxis_camera(180+rob.camera.AT_euler[2])
+
+        return True
     except Exception as ex:
         rob.set_tcp(rob.tcp)  # restore the original TCP
-        print(f"search_apriltag_by_tilt failed: {ex}")
-    if found is None:
-        print("No AprilTag found within the tilt search range.")
+        if stop_event is not None and stop_event.is_set():
+            print("AprilTag search stopped by operator.")
+        else:
+            print(f"search_apriltag_by_tilt failed: {ex}")
         return False
-    print("Moving up 1 cm ...")
-    rob.mvr2z(0.01)
-    print("Centering camera ...")
-    rob.center_camera2apriltag()
-    # 3./4. Face the camera down keeping the tag in view, then fine-center.
-    print("Tipping camera face-down while keeping the tag in view ...")
-    roll_around_tag(rob)
-    print("Finally centering the camera on the AprilTag ...")
-    rob.center_camera2apriltag()
-    if rob.camera.AT_euler is None:
-        print("Lost the AprilTag while centering; cannot refresh the camera pose.")
-        return False
-    rob.rotate_around_Zaxis_camera(180+rob.camera.AT_euler[2])  # refresh the camera pose
-    rob.center_camera2apriltag()
-
-    # Descend in 5 cm steps until the tag is ~0.2 m from the camera.
-    r = _detect_apriltag(rob)
-    while r is not None and rob.camera.QRdistance > 0.2:
-        rob.mvr2z(-0.05)
-        r = _detect_apriltag(rob)
-    # Re-align the camera's Z rotation to the tag after descending.
-    if r is not None:
-        rob.rotate_around_Zaxis_camera(180+rob.camera.AT_euler[2])
-
-    return True
 
 def bring_hand_to_camera_center(rob, box, center, acc=0.1, vel=0.1):
     # distance vs pixel size
