@@ -22,23 +22,20 @@ cleaningstationID2 = 3
 mixerstationID = 4
 mixer_cleaningstationID = 5
 
+_POSITION_FIELDS = ('X', 'Y', 'Z', 'RX', 'RY', 'RZ')
+
+# caget returns None if the PV is disconnected or the request times out. Never
+# hand that on to a caller, since the pose goes straight into robot.moveto().
 def get_position(ID):
-    pos = [0] * 6
-    pos[0] = caget(f'12idUR:WaypointL:{ID}:X')
-    pos[1] = caget(f'12idUR:WaypointL:{ID}:Y')
-    pos[2] = caget(f'12idUR:WaypointL:{ID}:Z')
-    pos[3] = caget(f'12idUR:WaypointL:{ID}:RX')
-    pos[4] = caget(f'12idUR:WaypointL:{ID}:RY')
-    pos[5] = caget(f'12idUR:WaypointL:{ID}:RZ')
+    pos = [caget(f'12idUR:WaypointL:{ID}:{f}') for f in _POSITION_FIELDS]
+    missing = [f for f, v in zip(_POSITION_FIELDS, pos) if v is None]
+    if missing:
+        raise RuntimeError(f'waypoint {ID}: no value read from PV(s) {missing}')
     return pos
 
 def set_position(ID, pos):
-    caput(f'12idUR:WaypointL:{ID}:X', pos[0])
-    caput(f'12idUR:WaypointL:{ID}:Y', pos[1])
-    caput(f'12idUR:WaypointL:{ID}:Z', pos[2])
-    caput(f'12idUR:WaypointL:{ID}:RX', pos[3])
-    caput(f'12idUR:WaypointL:{ID}:RY', pos[4])
-    caput(f'12idUR:WaypointL:{ID}:RZ', pos[5])
+    for f, v in zip(_POSITION_FIELDS, pos):
+        caput(f'12idUR:WaypointL:{ID}:{f}', v)
 
 def get_sampletable_position():
     global sample_table, sampletableID
@@ -189,10 +186,11 @@ def load_sample_to_beam(robot):
 def return_sample(robot):
     # move up to the sample table height.
     p = robot.get_pos()
-    p[2] = get_sampletable_position()[2]
+    sample_table_pos = get_sampletable_position()
+    p[2] = sample_table_pos[2]
     robot.moveto(p)
     # move to the sample table
-    robot.moveto(get_sampletable_position())
+    robot.moveto(sample_table_pos)
     robot.pickup()
     p2 = list(get_mixerstation_position())
     p2[2] = p2[2]-distance_gripper_tag+needle_clear_height
