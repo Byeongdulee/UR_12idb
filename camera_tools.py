@@ -705,17 +705,22 @@ def showcamera(rob, codetype = 0, obj_distance=0.15):
 #    rob.camera.stop()
     #t.join()
 
-def resolve_robot_ip(name='UR5'):
-    """Look up a robot's control-box IP from list_of_robots.json by name."""
+def resolve_robot_ip(name='UR5', robots_file=None):
+    """Look up a robot's control-box IP from list_of_robots.json by name.
+
+    `list_of_robots.json` next to this module is only ever a *default* --
+    this does not scan the current working directory or a sibling
+    `RobotList/` folder for something to silently override it with (a robot
+    control box is too easy to point at the wrong address that way). Pass
+    `robots_file`, or set the `UR12IDB_ROBOTS_FILE` environment variable, to
+    use a different file instead.
+    """
     here = os.path.dirname(os.path.abspath(__file__))
-    for fn in (os.path.join('RobotList', 'list_of_robots.json'),
-               os.path.join(here, 'RobotList', 'list_of_robots.json'),
-               os.path.join(here, 'list_of_robots.json'),
-               'list_of_robots.json'):
-        if os.path.exists(fn):
-            with open(fn) as f:
-                return json.load(f)[name]
-    raise FileNotFoundError("list_of_robots.json not found.")
+    fn = robots_file or os.environ.get('UR12IDB_ROBOTS_FILE') or os.path.join(here, 'list_of_robots.json')
+    if not os.path.exists(fn):
+        raise FileNotFoundError("list_of_robots.json not found: %s" % fn)
+    with open(fn) as f:
+        return json.load(f)[name]
 
 def showcamera_ip(ip=None, name='UR5'):
     """View the IP camera and detect AprilTags without a robot object.

@@ -50,6 +50,36 @@ april_tag_size = {'heater': 0.0075, 'standard':0.015}
 class ToolChangerException(Exception):
     pass
 
+
+def _resolve_robot_ip(name, robots_file=None):
+    """Look up `name` (e.g. 'UR3') in the robot registry, returning its
+    control-box hostname/IP, or None if it cannot be resolved.
+
+    The registry is `list_of_robots.json` next to this module (`module_path`),
+    and it is only ever a *default* -- this no longer scans the current
+    working directory or a sibling `RobotList/` folder for something to
+    silently override it with. A robot control box is too easy to point at
+    the wrong address that way: a stray `../RobotList/list_of_robots.json`
+    holding a stale IP used to win over this module's own file purely because
+    of where the caller happened to be launched from. To use a different
+    registry, pass `robots_file` explicitly, or set the
+    `UR12IDB_ROBOTS_FILE` environment variable. To bypass the registry
+    entirely, pass `ip=` to the robot constructor -- `name` cannot be an
+    address here, since it also selects `ini/<name>.ini`.
+    """
+    fn = robots_file or os.environ.get('UR12IDB_ROBOTS_FILE') or os.path.join(module_path, 'list_of_robots.json')
+    try:
+        with open(fn) as json_file:
+            registry = json.load(json_file)
+    except FileNotFoundError:
+        print("Please provide the IP number of your robot control box.")
+        return None
+    try:
+        return registry[name]
+    except KeyError:
+        print(f"{name} does not exist in {fn}")
+        return None
+
 class UR3(UR_cam_grip):
     # unit of position vector : meter.
     #Waypointmagup_q=[5.192646026611328, -0.6902674001506348, 0.557411019002096, -1.440483884220459, -1.5736210981952112, -1.0272372404681605]
@@ -63,33 +93,19 @@ class UR3(UR_cam_grip):
 #    camtcp = [-0.001, 0.04, 0.015, -math.pi/180*30, 0, 0]
     camtcp = [0, 0.0433, 0.015, -math.pi/180*30, 0, 0]
 
-    def __init__(self, name = 'UR3', package=ROBOT_PYTHON_PACKAGE, grippertype=1, cameratype=1, use_rtde = False):
+    def __init__(self, name = 'UR3', package=ROBOT_PYTHON_PACKAGE, grippertype=1, cameratype=1, use_rtde = False, ip=None):
 # definition of Cartesian Axis of UR3 at 12idb.
 # X : positive - Out board
 # X : negative - In board
 # Y : positive - Along X-ray
 # Y : negative - Again X-ray
 
-        try:
-            #with open('../RobotList/list_of_robots.json') as json_file:
-            jsname = 'list_of_robots.json'
-            fn = jsname
-            if os.path.exists(os.path.join(module_path, jsname)):
-                fn = os.path.join(module_path, jsname)
-            if os.path.exists(os.path.join(current_path, jsname)):
-                fn = os.path.join(current_path, jsname)
-            if os.path.exists('RobotList'):
-                fn = os.path.join('RobotList', jsname)
-            if os.path.exists('../RobotList'):
-                fn = os.path.join('../RobotList', jsname)
-            with open(fn) as json_file:
-                IPlist = json.load(json_file)
-            IP = IPlist[name]
-        except FileNotFoundError:
-            print("Please provide the IP number of your robot control box.")
-            return
-        except KeyError:
-            print(f"{name} does not exist in ../RobotList/list_of_robots.json")
+        # `name` still selects ini/<name>.ini below regardless of how the
+        # address was obtained. Pass `ip` explicitly when the caller already
+        # knows the control-box address (e.g. from its own config) to skip
+        # the list_of_robots.json lookup entirely.
+        IP = ip or _resolve_robot_ip(name)
+        if IP is None:
             return
 
         super(UR3, self).__init__(IP, package=package, grippertype=grippertype, cameratype=cameratype, use_rtde = use_rtde)
@@ -984,33 +1000,19 @@ class UR5(UR_cam_grip):
 #    camtcp = [-0.001, 0.04, 0.015, -math.pi/180*30, 0, 0]
     camtcp = [0, 0.0433, 0.015+toolchanger_length, -math.pi/180*30, 0, 0]
 
-    def __init__(self, name = 'UR5', package=ROBOT_PYTHON_PACKAGE, grippertype=1, cameratype=1):
+    def __init__(self, name = 'UR5', package=ROBOT_PYTHON_PACKAGE, grippertype=1, cameratype=1, ip=None):
 # definition of Cartesian Axis of UR3 at 12idb.
 # X : positive - Out board
 # X : negative - In board
 # Y : positive - Along X-ray
 # Y : negative - Again X-ray
 
-        try:
-            #with open('../RobotList/list_of_robots.json') as json_file:
-            jsname = 'list_of_robots.json'
-            fn = jsname
-            if os.path.exists(os.path.join(module_path, jsname)):
-                fn = os.path.join(module_path, jsname)
-            if os.path.exists(os.path.join(current_path, jsname)):
-                fn = os.path.join(current_path, jsname)
-            if os.path.exists('RobotList'):
-                fn = os.path.join('RobotList', jsname)
-            if os.path.exists('../RobotList'):
-                fn = os.path.join('../RobotList', jsname)
-            with open(fn) as json_file:
-                IPlist = json.load(json_file)
-            IP = IPlist[name]
-        except FileNotFoundError:
-            print("Please provide the IP number of your robot control box.")
-            return
-        except KeyError:
-            print(f"{name} does not exist in ../RobotList/list_of_robots.json")
+        # `name` still selects ini/<name>.ini below regardless of how the
+        # address was obtained. Pass `ip` explicitly when the caller already
+        # knows the control-box address (e.g. from its own config) to skip
+        # the list_of_robots.json lookup entirely.
+        IP = ip or _resolve_robot_ip(name)
+        if IP is None:
             return
 
         super(UR5, self).__init__(IP, package=package, grippertype=grippertype, cameratype=cameratype)
