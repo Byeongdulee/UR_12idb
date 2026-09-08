@@ -22,7 +22,7 @@ cleaningstationID2 = 3
 mixerstationID = 4
 mixer_cleaningstationID = 5
 
-_POSITION_FIELDS = ('X', 'Y', 'Z', 'RX', 'RY', 'RZ')
+_POSITION_FIELDS = ('X', 'Y', 'Z', 'Rx', 'Ry', 'Rz')
 
 # caget returns None if the PV is disconnected or the request times out. Never
 # hand that on to a caller, since the pose goes straight into robot.moveto().
@@ -31,6 +31,8 @@ def get_position(ID):
     missing = [f for f, v in zip(_POSITION_FIELDS, pos) if v is None]
     if missing:
         raise RuntimeError(f'waypoint {ID}: no value read from PV(s) {missing}')
+    # (x,y,z) in EPICS is given in mm, so convert to meters
+    pos[:3] = [v * 1000 for v in pos[:3]]
     return pos
 
 def set_position(ID, pos):
