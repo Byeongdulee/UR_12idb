@@ -22,7 +22,7 @@ cleaningstationID2 = 3
 mixerstationID = 4
 mixer_cleaningstationID = 5
 
-_POSITION_FIELDS = ('X', 'Y', 'Z', 'RX', 'RY', 'RZ')
+_POSITION_FIELDS = ('X', 'Y', 'Z', 'Rx', 'Ry', 'Rz')
 
 # caget returns None if the PV is disconnected or the request times out. Never
 # hand that on to a caller, since the pose goes straight into robot.moveto().
