@@ -1186,12 +1186,20 @@ class UR_cam_grip(UR_grip):
         self.rotz(euler[2], acc=0.1, vel=0.2)
         return True
 
-    def _center_aprilTag(self, tol=0.05, max_iter=4, tag_id=None, settle=5):
+    def _center_aprilTag(self, tol=0.05, max_iter=4, tag_id=None, settle=5,
+                         tol_m=None):
         # Iteratively re-center the aprilTag under the camera. After each move
         # the image is recaptured and the pixel offset recomputed; the loop
         # stops once the tag center is within default_tolerance (a fraction of
         # the image size, i.e. 5% by default) of the image center, or after
         # max_iter moves.
+        # tol_m overrides tol with a tolerance in meters *at the tag*, turned
+        # into a pixel threshold from the distance measured on each iteration.
+        # tol is a fraction of the image, so what it means on the bench slides
+        # with the standoff and the frame size -- 0.01 is 1.6 mm at 0.2 m and
+        # 4.7 mm at 0.6 m. Callers that need a stated accuracy (the AprilTag
+        # teach path wants 0.2 mm) ask for it in meters and get it at whatever
+        # distance the arm happens to be.
         # Detection goes through camera_tools._detect_apriltag, which keeps
         # recapturing for `settle` seconds instead of judging a single frame.
         # The camera refocuses while the arm moves, so the first frames after a
@@ -1217,7 +1225,14 @@ class UR_cam_grip(UR_grip):
             dx = w/2-QRpos[0]
             dy = h/2-QRpos[1]
             # converged once the tag sits within tolerance of the image center
-            if abs(dx) <= tol*w and abs(dy) <= tol*h:
+            if tol_m is not None and QRdist:
+                # Same threshold on both axes: tol_m is a distance at the tag,
+                # not a share of a frame that is wider than it is tall.
+                tol_px = tol_m * self.camera.camera_f / QRdist
+                converged = abs(dx) <= tol_px and abs(dy) <= tol_px
+            else:
+                converged = abs(dx) <= tol*w and abs(dy) <= tol*h
+            if converged:
                 return True
             dX = -dx/self.camera.camera_f*QRdist
             dY = dy/self.camera.camera_f*QRdist
@@ -1230,8 +1245,9 @@ class UR_cam_grip(UR_grip):
                 return False
         print("aprilTag centering did not converge within max_iter iterations.")
         return False
-    
-    def center_camera2apriltag(self, tol=0.01, max_iter=4, tag_id=None, settle=5):
+
+    def center_camera2apriltag(self, tol=0.01, max_iter=4, tag_id=None, settle=5,
+                               tol_m=None):
         # Locate the tag before centering, so its id is pinned for the whole
         # run and a missing tag is reported against what is actually in view.
         # _detect_apriltag keeps recapturing for `settle` seconds rather than
@@ -1244,5 +1260,6 @@ class UR_cam_grip(UR_grip):
             else:
                 print(f"Cannot find an april tag in the camera feed.")
             return False
-        self._center_aprilTag(tol=tol, max_iter=max_iter, tag_id=r.tag_id, settle=settle)
+        self._center_aprilTag(tol=tol, max_iter=max_iter, tag_id=r.tag_id,
+                              settle=settle, tol_m=tol_m)
         return True
