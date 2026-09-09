@@ -14,6 +14,52 @@ from threading import Thread
 import json
 import os
 
+# -- AprilTag teach accuracy ---------------------------------------------------
+# How closely the tag has to sit on the optical axis before centering is called
+# done, as a distance at the tag rather than a share of the frame. Passed to
+# center_camera2apriltag(tol_m=...), which converts it to pixels using the
+# standoff measured on each iteration.
+AT_CENTER_TOL_M = 0.0002        # 0.2 mm
+# Iterations allowed to get there. The old fraction-of-frame default converged
+# in one or two moves because it was ~1.6 mm wide; 0.2 mm needs more room, and
+# each move is only as repeatable as the arm.
+AT_CENTER_MAX_ITER = 8
+# Standoff to square the camera to a tilted tag from, in meters. The
+# perspective a tilt produces goes as (tag size / distance)^2, and it is tiny:
+# a 12 mm tag at 0.26 m foreshortens its far edge by 0.46 px for a 7 deg tilt,
+# which is below the noise the corner detector works with -- so the pose
+# solver picks between its two near-identical solutions on sub-pixel noise and
+# flips branches as soon as the arm moves. That is the "more than one new
+# minima found" the solver reports. At 0.15 m the same tilt is worth ~1.3 px,
+# which is workable; 0.10 m would give ~3 px and resolve better, but brought
+# the camera down too close to the hardware to be usable.
+AT_SQUARE_UP_DISTANCE = 0.15
+# How square the camera has to be to the tag, in radians. Set by what the
+# image can actually resolve at AT_SQUARE_UP_DISTANCE, not by what would be
+# nice: with a 12 mm tag at 0.15 m, ~0.1 px of corner localization buys about
+# 0.55 deg. A tolerance below that floor cannot be met, and asking for one
+# only spends every iteration chasing noise before failing. Raise the standoff
+# and this has to come up with it -- the signal falls off as 1/distance^2.
+AT_ALIGN_TOL = 1e-2             # 0.57 deg
+# Per-move clamp while squaring up, in degrees. Big enough to close a several
+# degree tilt within max_steps, small enough to keep the tag in frame.
+AT_ALIGN_STEP = 2.0
+
+# Why the last AprilTag routine gave up. The reasons used to go to the server
+# console and nowhere else, so a failed teach reached the operator as the
+# generic "failed to find a tag" -- true, but not an answer to why it failed.
+# PAL12idb.locate_apriltag() reads this back into the error it raises, which
+# is what the GUI ends up showing.
+last_search_failure = None
+
+
+def _fail(message, value=False):
+    """Record why a routine gave up, print it, and return `value`."""
+    global last_search_failure
+    last_search_failure = message
+    print(message)
+    return value
+
 pos_sam = [-4.60838969e-01, -5.05650395e-01,  2.31693123e-01,  2.28368253e+00,
        -2.15707100e+00,  1.01565770e-03]
 pos_mag = [-3.89803673e-01, -1.50716439e-01, -3.46071435e-02,  2.26448275e+00,
@@ -843,26 +889,299 @@ def _detect_apriltag(rob, settle=5, tag_id=None, stop_event=None):
             break
         time.sleep(0.1)  # Wait a bit before trying again
         if time.time() - t0 > settle:
+            # Deliberately not _fail(): during the tilt grid this fires for
+            # every pose that has no tag in it and the search goes on to
+            # succeed, so recording it would bury the real reason under a
+            # routine one. Callers that care say what they lost and where.
             print("No AprilTag detected after waiting {:.1f} s.".format(settle))
             return None
     return r
 
-def roll_around_tag(rob, step=5, tol=1e-2, max_steps=24, stop_event=None):
+def approach_tag_distance(rob, target, tol=0.003, max_steps=6, max_travel=0.30,
+                          stop_event=None):
+    """Move the camera until it sits `target` m from the tag it is looking at.
+
+    Returns the last measured camera-to-tag distance, or None if no tag could
+    be read at all. rob.camera.AT_physical_size has to already be set to the
+    size of the tag in view, since the measurement is proportional to it.
+
+    Measure and move is iterated because each step is only as good as the
+    frame behind it. max_travel caps the total distance this can command, so
+    one bad reading cannot walk the arm into the hardware.
+    """
+    measured = None
+    travelled = 0.0
+    for _ in range(max_steps):
+        if stop_event is not None and stop_event.is_set():
+            return measured
+        if _detect_apriltag(rob, stop_event=stop_event) is None:
+            return measured
+        measured = rob.camera.QRdistance
+        step = measured - target
+        print(f"AprilTag is {measured:.4f} m from the camera (target {target:.4f} m).")
+        if abs(step) <= tol:
+            break
+        if travelled + abs(step) > max_travel:
+            step = math.copysign(max_travel - travelled, step)
+            if abs(step) <= 0:
+                print(f"Stopping at the {max_travel:.3f} m travel limit.")
+                break
+        rob.mvr2z(-step)
+        travelled += abs(step)
+    return measured
+
+
+def measure_tag_tilt(rob, samples=10, stop_event=None):
+    """Mean tilt of the tag about the camera X and Y axes, in degrees.
+
+    Returns (ex, ey, distance), or None if too few frames decoded.
+
+    Pose estimation on a planar tag is bimodal: for a small, near-face-on tag
+    two poses project almost identically and the solver flips between them
+    from frame to frame -- that is the library's "Error, more than one new
+    minima found". A single frame's euler is therefore not something to servo
+    on. It is what made the squaring loop read 1.2 deg, apply a 1.2 deg
+    correction, and then read 10.5 deg: no rotation that small can move the
+    measurement that far, so the second reading was the other solution.
+
+    Averaging `samples` frames is what this does about it. Note what that does
+    and does not buy: it cuts the variance, but on a genuinely split sample the
+    mean lands between the two solutions rather than on the right one, so the
+    figure it returns is a compromise, not a measurement. Convergence then
+    rests on the caller iterating with a clamped step.
+    """
+    ex, ey, dist = [], [], []
+    for _ in range(samples):
+        if stop_event is not None and stop_event.is_set():
+            return None
+        r = _detect_apriltag(rob, stop_event=stop_event)
+        if r is None:
+            continue
+        info = cal_AT2pose(r)
+        if len(info) != 3 or info[0] is None:
+            continue
+        ex.append(info[0][0])
+        ey.append(info[0][1])
+        dist.append(rob.camera.getATdistance(r))
+    if len(ex) < 3:
+        return _fail(f"Only {len(ex)} usable AprilTag pose(s) in {samples} frames; "
+              "cannot measure the tilt.", None)
+    ex, ey = np.asarray(ex), np.asarray(ey)
+    mx, my = float(np.mean(ex)), float(np.mean(ey))
+    # The spread is reported, not acted on. It is worth seeing: a large one
+    # means the frames are not disagreeing by a little, they are reporting the
+    # solver's two different solutions, and the average then sits between two
+    # answers rather than on either. What makes that usable anyway is the
+    # caller -- _square_camera_to_tag clamps each correction to AT_ALIGN_STEP
+    # and re-measures, so it behaves as a feedback loop with gain below one
+    # and can still walk in on a noisy but roughly centred estimate.
+    deviation = np.maximum(np.abs(ex - mx), np.abs(ey - my))
+    print(f"Tag tilt averaged over {len(ex)}/{samples} frames: "
+          f"({mx:.3f}, {my:.3f}) deg, frame-to-frame spread up to "
+          f"{deviation.max():.2f} deg.")
+    return mx, my, float(np.mean(dist))
+
+
+def calibrate_tilt_response(rob, probe=4.0, stop_event=None):
+    """Measure how the reported tag tilt responds to a known camera rotation.
+
+    Returns a 2x2 array J where J[i][j] is d(euler_i)/d(rotation_j), the
+    rotations being about the camera X (j=0) and Y (j=1) axes, or None if the
+    tag could not be measured throughout.
+
+    This exists because assuming the mapping was wrong on the bench. Taking
+    euler[0] to be corrected by a camera-X rotation and euler[1] by a camera-Y
+    one -- which is what rob.orient2aprilTag() does -- drove euler[0] from
+    -3.6 deg to -12.7 deg over three iterations while commanding +5.7 deg of
+    X rotation to correct it. The rotation was not acting on the axis the
+    measurement reports, so rather than guess again among the axis and sign
+    combinations, rotate a known amount about each axis and difference the
+    readings.
+
+    Each probe rotation is undone before the next, so the arm ends where it
+    started. Every measurement is taken with the tag centred, since an
+    off-axis tag reads a tilt that is partly just viewing angle.
+    """
+    def _measure():
+        rob.center_camera2apriltag(tol_m=AT_CENTER_TOL_M,
+                                   max_iter=AT_CENTER_MAX_ITER)
+        return measure_tag_tilt(rob, stop_event=stop_event)
+
+    base = _measure()
+    if base is None:
+        return None
+    ex0, ey0, distance = base
+    baselines = [(ex0, ey0)]
+    columns = []
+    for axis, angles in (("X", [probe, 0.0]), ("Y", [0.0, probe])):
+        if stop_event is not None and stop_event.is_set():
+            return None
+        print(f"Probing the tilt response to a {probe:.1f} deg camera {axis} rotation ...")
+        rob.roll_around_camera(list(angles), distance)
+        probed = _measure()
+        rob.roll_around_camera([-angles[0], -angles[1]], distance)   # put it back
+        if probed is None:
+            return _fail(f"Lost the AprilTag while probing the {axis} response.", None)
+        columns.append([(probed[0] - ex0) / probe, (probed[1] - ey0) / probe])
+        # Re-read the baseline now the arm is back where it started. Repeating
+        # a measurement *without* moving would understate the noise: the pose
+        # solver picks consistently for a fixed viewpoint and changes its mind
+        # when the viewpoint does, so the scatter that matters is the scatter
+        # across a move-and-return, which is what the loop actually sees
+        # between iterations.
+        again = _measure()
+        if again is None:
+            return _fail(f"Lost the AprilTag after the {axis} probe.", None)
+        baselines.append((again[0], again[1]))
+    # columns are d(euler)/d(rot_axis); stack them as J[:, j]
+    J = np.array(columns, dtype=float).T
+    print("Tilt response matrix d(euler)/d(rotation):\n"
+          f"    d(ex)/dX = {J[0][0]:+.3f}   d(ex)/dY = {J[0][1]:+.3f}\n"
+          f"    d(ey)/dX = {J[1][0]:+.3f}   d(ey)/dY = {J[1][1]:+.3f}")
+    det = float(np.linalg.det(J))
+    if abs(det) < 0.05:
+        return _fail(f"Tilt response is not invertible (det {det:+.4f}): a camera "
+              "rotation barely moves the reported tilt, or moves both axes the "
+              "same way. Cannot square up to the tag from this measurement.", None)
+    b = np.asarray(baselines, dtype=float)
+    noise = float(np.hypot(b[:, 0].std(ddof=1), b[:, 1].std(ddof=1)))
+    print(f"Repeatability over {len(b)} returns to the same pose: {noise:.3f} deg "
+          f"(ex {b[:, 0].std(ddof=1):.3f}, ey {b[:, 1].std(ddof=1):.3f}).")
+    return J, noise
+
+
+def _square_camera_to_tag(rob, step_in_radians, tol, max_steps, stop_event=None):
+    """Rotate the camera until it looks straight down the tag's own normal.
+
+    The face-down loop below aims at world Z, which is only the same thing
+    when the tag lies flat. A tag that sits at an angle -- the flowcell's, in
+    its cleaning station -- has to be squared up against itself instead, so
+    this drives the tilt the detector reports to zero rather than driving the
+    pose to a world-frame target.
+
+    cal_AT2pose()'s euler[0]/euler[1] are the tag's tilt about the camera X
+    and Y axes; euler[2] is its in-plane spin, which is not touched here --
+    search_apriltag_by_tilt() corrects that separately with
+    rotate_around_Zaxis_camera().
+
+    Assumes the caller has already pushed the TCP out to the tag, so a
+    rotation here pivots about the tag and keeps it in frame.
+    """
+    # Centre first, measure second, rotate last -- in that order, every time.
+    # The rotation pivots about the extended camera TCP, which sits along the
+    # flange Z rather than along the optical axis (camtcp carries a 30 deg
+    # tilt), so a step both squares the camera up and slides the tag off the
+    # axis. Reading the tilt in that state mixes in the off-axis viewing angle:
+    # measuring after the rotation and before the re-centring is what made this
+    # loop oscillate (3.6 -> 6.7 -> 1.6 -> 4.7 deg) instead of converging.
+    #
+    # The rotation itself goes through rob.roll_around_camera(), the same
+    # primitive rob.orient2aprilTag() uses, rather than a hand-rolled
+    # set_pose: it takes the pivot distance explicitly, rotates about the
+    # camera X then Y, and puts the gripper TCP back when it is done.
+    # Which camera rotation moves which reported axis is measured, not
+    # assumed -- see calibrate_tilt_response.
+    calibration = calibrate_tilt_response(rob, stop_event=stop_event)
+    if calibration is None:
+        return False
+    J, noise = calibration
+    # Stop at the noise, not below it. `tol` is a floor, not a target: asking
+    # for better than the measurement repeats to is asking the loop to chase
+    # its own scatter, which is what it spent all 24 steps doing on the bench
+    # (corrections of ~2 deg against 2.2 deg of pass-to-pass noise).
+    tol = max(tol, noise / 180 * math.pi)
+    print(f"Squaring to within {tol/math.pi*180:.3f} deg "
+          f"(measurement repeatability {noise:.3f} deg).")
+    previous = None
+    worse = 0
+    for _ in range(max_steps):
+        if stop_event is not None and stop_event.is_set():
+            return _fail("AprilTag search stopped by operator.")
+        # 1. On-axis: the tilt below is only meaningful with the tag centred.
+        rob.center_camera2apriltag(tol_m=AT_CENTER_TOL_M,
+                                   max_iter=AT_CENTER_MAX_ITER)
+        # 2. Measure, over several frames -- see measure_tag_tilt for why a
+        # single frame is not a measurement here.
+        measured = measure_tag_tilt(rob, stop_event=stop_event)
+        if measured is None:
+            return False
+        ex, ey, distance = measured
+        tilt = math.hypot(ex, ey) / 180 * math.pi
+        print(f"Camera is {tilt/math.pi*180:.3f} deg off the AprilTag normal "
+              f"at {distance:.4f} m.")
+        if tilt < tol:
+            print("Camera is square to the AprilTag.")
+            if noise / 180 * math.pi > AT_ALIGN_TOL:
+                # Say what "square" actually means here. Converging against a
+                # noise-derived tolerance does not mean the camera is aligned
+                # to that figure -- it means the measurement cannot tell.
+                print(f"  -- to within the {noise:.3f} deg the measurement "
+                      "repeats to, not better. Residual tilt up to that much "
+                      "may remain; a larger tag is what would tighten it.")
+            return True
+        if previous is not None and tilt > previous:
+            # An averaged reading still moves around, and a re-centring move
+            # changes the viewing angle a little, so one step going the wrong
+            # way means nothing. Only a run of them says the loop is not
+            # converging -- bailing on a single rise is what stopped the last
+            # two attempts one step after a perfectly good 7.4 -> 1.2 deg.
+            worse += 1
+            print(f"Tilt grew after that step ({worse} in a row).")
+            if worse >= 3:
+                return _fail("Squaring up to the AprilTag is not converging; giving up.")
+        else:
+            worse = 0
+        previous = tilt
+        # 3. Solve for the rotation that nulls the measured tilt, using the
+        # response measured above rather than assuming euler[0] <-> camera X.
+        # J @ rotation = -(ex, ey), in degrees.
+        try:
+            rotation = np.linalg.solve(J, np.array([-ex, -ey], dtype=float))
+        except np.linalg.LinAlgError:
+            return _fail("Tilt response matrix became singular; giving up.")
+        # Clamp so no single move exceeds `step`, keeping the tag in frame.
+        commanded = math.hypot(rotation[0], rotation[1]) / 180 * math.pi
+        scale = min(1.0, step_in_radians / commanded) if commanded else 1.0
+        rob.roll_around_camera([rotation[0] * scale, rotation[1] * scale], distance)
+    return _fail("Reached max_steps before the camera squared up to the tag.")
+
+
+def roll_around_tag(rob, step=0.1, tol=AT_ALIGN_TOL, max_steps=24,
+                    align_to_tag=False, stop_event=None):
     """Tilt the camera toward face-down in steps of at most ``step`` degrees,
     pivoting about the tag so it stays centered, until the camera faces down
     (within ``tol`` radians) or the tag is lost / ``max_steps`` is reached.
     Checked against stop_event before each step, so an abort takes effect
-    between moves rather than only after max_steps."""
+    between moves rather than only after max_steps.
+
+    align_to_tag aims at the tag's own normal instead of world Z-down, for a
+    tag that is not lying flat -- see _square_camera_to_tag."""
     r = _detect_apriltag(rob, stop_event=stop_event)
     if r is None:
-        print("No AprilTag in view; cannot roll around the tag.")
-        return False
+        return _fail("No AprilTag in view; cannot roll around the tag.")
     distance = rob.camera.getATdistance(r)
     print(f"AprilTag is at {distance} from the wrist camera.")
     newtcp = list(rob.camtcp)
     newtcp[2] = distance
     rob.set_tcp(newtcp)
     step_in_radians = step / 180 * math.pi
+    if align_to_tag:
+        # Close in before squaring. The tilt is only measurable when the tag is
+        # large in the frame (see AT_SQUARE_UP_DISTANCE), and `step` is taken
+        # from AT_ALIGN_STEP rather than this function's default: the default
+        # is sized for the face-down loop below, and a small per-move clamp
+        # cannot close a several degree tilt within max_steps.
+        # Put the gripper TCP back first: the extended pivot TCP set above is
+        # about to be stale anyway (it was built from the distance measured
+        # before this approach), and _square_camera_to_tag re-establishes it
+        # per iteration through roll_around_camera.
+        rob.set_tcp(rob.tcp)
+        print(f"Closing to {AT_SQUARE_UP_DISTANCE:.3f} m to measure the tag's tilt ...")
+        if approach_tag_distance(rob, AT_SQUARE_UP_DISTANCE,
+                                 stop_event=stop_event) is None:
+            return _fail("Lost the AprilTag while closing in to square up to it.")
+        return _square_camera_to_tag(rob, step / 180 * math.pi, tol,
+                                     max_steps, stop_event=stop_event)
     # Face-down rotation vector, built the same way rob.Zalign() does it:
     # roll = 180 deg, pitch = 0, and the heading (yaw) the arm already has.
     # A hard-coded [0, -pi, 0] is Z-down too, but at a yaw of its own, so
@@ -872,8 +1191,7 @@ def roll_around_tag(rob, step=5, tol=1e-2, max_steps=24, stop_event=None):
     target_rotvec = np.asarray(rob.rpy2rotvec(math.pi, 0.0, rpy[2]), dtype=float)
     for _ in range(max_steps):
         if stop_event is not None and stop_event.is_set():
-            print("AprilTag search stopped by operator.")
-            return False
+            return _fail("AprilTag search stopped by operator.")
         pose = rob.get_pose()
         v = pose.orient.get_rotation_vector().array
         # A rotation vector and its negative describe the same half-turn, so
@@ -894,12 +1212,14 @@ def roll_around_tag(rob, step=5, tol=1e-2, max_steps=24, stop_event=None):
             dr = np.array([0,0,0])
         pose.orient = m3d.Orientation(target_rotvec - dr)  # new orientation after the step
         rob.set_pose(pose, acc=0.1, vel=0.1, wait=True)
-        rob.center_camera2apriltag()  # clean up any residual offset
-    print("Reached max_steps before the camera faced down.")
-    return False
+        # clean up any residual offset, to the teach path's stated accuracy
+        rob.center_camera2apriltag(tol_m=AT_CENTER_TOL_M,
+                                   max_iter=AT_CENTER_MAX_ITER)
+    return _fail("Reached max_steps before the camera faced down.")
 
 def search_apriltag_by_tilt(rob, ref_pos=[],
-                            tilt_range=10, tilt_step=5, stop_event=None):
+                            tilt_range=10, tilt_step=5, align_to_tag=False,
+                            stop_event=None, skip_roll=False):
     """Search for an AprilTag by tilting the camera at a reference position.
 
     Sequence:
@@ -909,6 +1229,21 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
          (in ``tilt_step`` steps, trying 0,0 first) until a tag is detected.
       4. Once found, tip the camera face-down while keeping the tag in view,
          then run center_camera2apriltag().
+
+    align_to_tag is for a tag that does not lie flat on its station (the
+    flowcell's, in the flowcell cleaning station). It changes what "aligned"
+    means from world Z-down to the tag's own normal, so step 1 does not
+    Zalign() -- levelling the tool first would only be squaring it to a
+    surface the tag is not parallel to -- and step 4 squares the camera to
+    the tag instead of tipping it face-down.
+
+    skip_roll keeps the camera face-normal-down instead of running step 4's
+    roll_around_tag: once the tag is found and centered, the tool is leveled in
+    place with rob.Zalign() (which preserves the XY position and heading) and
+    then re-centered on the tag. Use it to record a station's position with a
+    clean level orientation -- for a tilted seat whose real angle is taught by
+    hand afterward -- rather than tipping/squaring the camera to the tag. It
+    overrides align_to_tag's squaring for the same reason.
 
     stop_event, if given, is a threading.Event checked before each move in
     every loop below; a caller that also calls rob.robot.stopj() to interrupt
@@ -921,6 +1256,8 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
     Returns True if a tag was found and centered, False otherwise (including
     on operator-requested abort).
     """
+    global last_search_failure
+    last_search_failure = None          # this run's reason, not the last run's
     #ref_pos=(-0.0, -0.4, 0.5)
     if len(ref_pos) ==0:
         ref_pos = [-0.22, -0.374598093, 0.200013817, -2.18860535, 2.25379435, -5.53757805e-05]
@@ -930,7 +1267,8 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
         # 1. Move to the reference position with the current (gripper) TCP.
         print(f"Moving to reference position {list(ref_pos)} ...")
         rob.set_tcp(rob.tcp)
-        rob.Zalign()  # keep the current orientation
+        if not align_to_tag:
+            rob.Zalign()  # keep the current orientation
         rob.moveto(list(ref_pos))
         rob.put_camera2tcp()  # ensure the camera is in the TCP frame
         # 2. Switch to the camera TCP so rotations pivot about the camera point.
@@ -944,8 +1282,7 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
                       key=lambda a: a[0] ** 2 + a[1] ** 2)
         for (ax, ay) in grid:
             if stop_event is not None and stop_event.is_set():
-                print("AprilTag search stopped by operator.")
-                return False
+                return _fail("AprilTag search stopped by operator.")
             t = base.copy()                 # fresh copy; leaves base untouched
             t.orient.rotate_xt(ax / 180 * math.pi)
             t.orient.rotate_yt(ay / 180 * math.pi)
@@ -957,33 +1294,45 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
                 found = (ax, ay)
                 break
         if found is None:
-            print("No AprilTag found within the tilt search range.")
-            return False
+            return _fail("No AprilTag found within the tilt search range.")
 
         print("Moving up 1 cm ...")
         rob.mvr2z(0.01)
         print("Centering camera ...")
-        rob.center_camera2apriltag()
-        # 3./4. Face the camera down keeping the tag in view, then fine-center.
-        print("Tipping camera face-down while keeping the tag in view ...")
-        if not roll_around_tag(rob, stop_event=stop_event):
-            return False
+        rob.center_camera2apriltag(tol_m=AT_CENTER_TOL_M,
+                                   max_iter=AT_CENTER_MAX_ITER)
+        # 3./4. Bring the camera to its final orientation, keeping the tag in
+        # view. Normally roll_around_tag tips it face-down (or squares it to a
+        # tilted tag); skip_roll instead levels the tool in place so the camera
+        # stays face-normal-down, leaving any real seat tilt to a hand teach.
+        if skip_roll:
+            print("Skipping roll: leveling camera to face straight down ...")
+            rob.set_tcp(rob.tcp)   # level the gripper TCP, not the pivot TCP
+            rob.Zalign()           # face down, keep XY position and heading
+            rob.put_camera2tcp()
+        else:
+            if align_to_tag:
+                print("Squaring the camera to the AprilTag's own normal ...")
+            else:
+                print("Tipping camera face-down while keeping the tag in view ...")
+            if not roll_around_tag(rob, align_to_tag=align_to_tag, stop_event=stop_event):
+                return False
         if stop_event is not None and stop_event.is_set():
             return False
         print("Finally centering the camera on the AprilTag ...")
-        rob.center_camera2apriltag()
+        rob.center_camera2apriltag(tol_m=AT_CENTER_TOL_M,
+                                   max_iter=AT_CENTER_MAX_ITER)
         if rob.camera.AT_euler is None:
-            print("Lost the AprilTag while centering; cannot refresh the camera pose.")
-            return False
+            return _fail("Lost the AprilTag while centering; cannot refresh the camera pose.")
         rob.rotate_around_Zaxis_camera(180+rob.camera.AT_euler[2])  # refresh the camera pose
-        rob.center_camera2apriltag()
+        rob.center_camera2apriltag(tol_m=AT_CENTER_TOL_M,
+                                   max_iter=AT_CENTER_MAX_ITER)
 
         # Descend in 5 cm steps until the tag is ~0.2 m from the camera.
         r = _detect_apriltag(rob, stop_event=stop_event)
         while r is not None and rob.camera.QRdistance > 0.2:
             if stop_event is not None and stop_event.is_set():
-                print("AprilTag search stopped by operator.")
-                return False
+                return _fail("AprilTag search stopped by operator.")
             rob.mvr2z(-0.05)
             r = _detect_apriltag(rob, stop_event=stop_event)
         # Re-align the camera's Z rotation to the tag after descending.
@@ -996,8 +1345,7 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
         if stop_event is not None and stop_event.is_set():
             print("AprilTag search stopped by operator.")
         else:
-            print(f"search_apriltag_by_tilt failed: {ex}")
-        return False
+            return _fail(f"search_apriltag_by_tilt failed: {ex}")
 
 def bring_hand_to_camera_center(rob, box, center, acc=0.1, vel=0.1):
     # distance vs pixel size

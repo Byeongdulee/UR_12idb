@@ -13,5 +13,10 @@ try:
     from . import robUR
     from . import tc_pipet
     from . import ursocket
-except:
-    raise ModuleNotFoundError
+except Exception as e:
+    # Keep the original failure attached. A bare `raise ModuleNotFoundError`
+    # erased which submodule failed and why, so an importer downstream (the
+    # GUI's AprilTag overlay, for one) could only report "ModuleNotFoundError"
+    # with no name and no traceback to work from.
+    raise ModuleNotFoundError(
+        "common failed to import: %s: %s" % (type(e).__name__, e)) from e
