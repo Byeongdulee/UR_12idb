@@ -1219,7 +1219,7 @@ def roll_around_tag(rob, step=0.1, tol=AT_ALIGN_TOL, max_steps=24,
 
 def search_apriltag_by_tilt(rob, ref_pos=[],
                             tilt_range=10, tilt_step=5, align_to_tag=False,
-                            stop_event=None):
+                            stop_event=None, skip_roll=False):
     """Search for an AprilTag by tilting the camera at a reference position.
 
     Sequence:
@@ -1236,6 +1236,14 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
     Zalign() -- levelling the tool first would only be squaring it to a
     surface the tag is not parallel to -- and step 4 squares the camera to
     the tag instead of tipping it face-down.
+
+    skip_roll keeps the camera face-normal-down instead of running step 4's
+    roll_around_tag: once the tag is found and centered, the tool is leveled in
+    place with rob.Zalign() (which preserves the XY position and heading) and
+    then re-centered on the tag. Use it to record a station's position with a
+    clean level orientation -- for a tilted seat whose real angle is taught by
+    hand afterward -- rather than tipping/squaring the camera to the tag. It
+    overrides align_to_tag's squaring for the same reason.
 
     stop_event, if given, is a threading.Event checked before each move in
     every loop below; a caller that also calls rob.robot.stopj() to interrupt
@@ -1293,13 +1301,22 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
         print("Centering camera ...")
         rob.center_camera2apriltag(tol_m=AT_CENTER_TOL_M,
                                    max_iter=AT_CENTER_MAX_ITER)
-        # 3./4. Square the camera to the tag keeping it in view, then fine-center.
-        if align_to_tag:
-            print("Squaring the camera to the AprilTag's own normal ...")
+        # 3./4. Bring the camera to its final orientation, keeping the tag in
+        # view. Normally roll_around_tag tips it face-down (or squares it to a
+        # tilted tag); skip_roll instead levels the tool in place so the camera
+        # stays face-normal-down, leaving any real seat tilt to a hand teach.
+        if skip_roll:
+            print("Skipping roll: leveling camera to face straight down ...")
+            rob.set_tcp(rob.tcp)   # level the gripper TCP, not the pivot TCP
+            rob.Zalign()           # face down, keep XY position and heading
+            rob.put_camera2tcp()
         else:
-            print("Tipping camera face-down while keeping the tag in view ...")
-        if not roll_around_tag(rob, align_to_tag=align_to_tag, stop_event=stop_event):
-            return False
+            if align_to_tag:
+                print("Squaring the camera to the AprilTag's own normal ...")
+            else:
+                print("Tipping camera face-down while keeping the tag in view ...")
+            if not roll_around_tag(rob, align_to_tag=align_to_tag, stop_event=stop_event):
+                return False
         if stop_event is not None and stop_event.is_set():
             return False
         print("Finally centering the camera on the AprilTag ...")
