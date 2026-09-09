@@ -32,11 +32,16 @@ def get_position(ID):
     if missing:
         raise RuntimeError(f'waypoint {ID}: no value read from PV(s) {missing}')
     # (x,y,z) in EPICS is given in mm, so convert to meters
-    pos[:3] = [v * 1000 for v in pos[:3]]
+    pos[:3] = [v / 1000 for v in pos[:3]]
     return pos
 
+# pos=(x,y,z,rx,ry,rz) where
+# x,y,z in meters and rx,ry,rz in radians
 def set_position(ID, pos):
-    for f, v in zip(_POSITION_FIELDS, pos):
+    # convert pos (x,y,z) to mm
+    pos_copy = pos.copy()
+    pos_copy[:3] = [v * 1000 for v in pos_copy[:3]]
+    for f, v in zip(_POSITION_FIELDS, pos_copy):
         caput(f'12idUR:WaypointL:{ID}:{f}', v)
 
 def get_sampletable_position():
