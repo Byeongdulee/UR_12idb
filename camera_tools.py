@@ -1268,6 +1268,7 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
         print(f"Moving to reference position {list(ref_pos)} ...")
         rob.set_tcp(rob.tcp)
         if not align_to_tag:
+            print("Z align first.............")
             rob.Zalign()  # keep the current orientation
         rob.moveto(list(ref_pos))
         rob.put_camera2tcp()  # ensure the camera is in the TCP frame
@@ -1305,12 +1306,12 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
         # view. Normally roll_around_tag tips it face-down (or squares it to a
         # tilted tag); skip_roll instead levels the tool in place so the camera
         # stays face-normal-down, leaving any real seat tilt to a hand teach.
-        if skip_roll:
-            print("Skipping roll: leveling camera to face straight down ...")
-            rob.set_tcp(rob.tcp)   # level the gripper TCP, not the pivot TCP
-            rob.Zalign()           # face down, keep XY position and heading
-            rob.put_camera2tcp()
-        else:
+        if not skip_roll:
+        #     print("Skipping roll: leveling camera to face straight down ...")
+        #     rob.set_tcp(rob.tcp)   # level the gripper TCP, not the pivot TCP
+        #     rob.Zalign()           # face down, keep XY position and heading
+        #     rob.put_tcp2camera()
+        # else:
             if align_to_tag:
                 print("Squaring the camera to the AprilTag's own normal ...")
             else:
