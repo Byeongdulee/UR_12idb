@@ -23,6 +23,16 @@ __credits__ = ["Updated urx by Morten Lind, Olivier Roulet-Dubonnet for a newer 
 __license__ = "LGPLv3"
 
 
+class RTMonitorTimeout(RuntimeError):
+    """No realtime packet arrived within the wait timeout.
+
+    Its own class so a caller can tell "the realtime link has stalled" from
+    the RobotExceptions that mean the robot refused or failed a move. The
+    remedy differs: this one needs the connection re-established, not the
+    motion retried.
+    """
+
+
 class URRTMonitor(threading.Thread):
 
     # Struct for revision of the UR controller giving 692 bytes
@@ -93,15 +103,48 @@ class URRTMonitor(threading.Thread):
         recvTime = 0
         pkg = b''
         while len(pkg) < nBytes:
-            pkg += self._rtSock.recv(nBytes - len(pkg))
+            chunk = self._rtSock.recv(nBytes - len(pkg))
+            if not chunk:
+                # Peer closed the connection: recv returns b'' forever after
+                # that, so without this the loop would spin. Raise instead, so
+                # run() reconnects.
+                raise ConnectionError("30003 realtime socket closed by the controller")
+            pkg += chunk
             if recvTime == 0:
                 recvTime = time.time()
         self.__recvTime = recvTime
         return pkg
 
-    def wait(self):
+    #: How long any wait=True getter will sit for a fresh realtime packet
+    #: before giving up. The controller streams at 125 Hz, so a healthy link
+    #: delivers one every 8 ms; a second is three orders of magnitude of
+    #: slack and still fails fast enough to be reported rather than endured.
+    WAIT_TIMEOUT_S = 1.0
+
+    def wait(self, timeout=None):
+        """Block until the next realtime packet is parsed.
+
+        Raises RTMonitorTimeout rather than waiting forever. The unbounded
+        version wedged every caller permanently whenever the controller
+        stopped feeding this socket while still holding it open: the receive
+        thread sits in recv() looking healthy, nothing ever reaches
+        notifyAll(), and the waiter never returns.
+
+        That is not a theoretical failure. robUR.movel/movej/movels each call
+        get_safety_mode() -- which lands here -- *before* sending a move, so a
+        stalled socket silently swallowed every motion in the system, with no
+        error, no timeout and the robot never twitching. A caller that gets an
+        exception can report it, retry, or reconnect; one that blocks forever
+        can do none of those.
+        """
+        if timeout is None:
+            timeout = self.WAIT_TIMEOUT_S
         with self._dataEvent:
-            self._dataEvent.wait()
+            if not self._dataEvent.wait(timeout):
+                raise RTMonitorTimeout(
+                    "No realtime packet from the UR controller in %.1f s. The "
+                    "socket on port 30003 is open but not delivering; the "
+                    "connection needs re-establishing." % timeout)
 
     def q_actual(self, wait=False, timestamp=False):
         """ Get the actual joint position vector."""
@@ -238,6 +281,32 @@ class URRTMonitor(threading.Thread):
                 return robot_current
     getROBOTCurrent = robot_current
 
+    #: Realtime packet size -> controller firmware, for when the caller did
+    #: not say. Sizes are what the controller actually puts on the wire and
+    #: grow with each generation, so they identify it without asking: a CB3
+    #: on 3.x sends 692 (or 540 on older), an e-Series on 5.x sends 1108+.
+    #: PolyScope 5.26 sends 1452.
+    _FIRMWARE_BY_PKGSIZE = ((1108, 5.9), (692, 3.1), (540, 3.0))
+
+    def _firmware_for(self, pkgsize):
+        """The firmware to parse this packet as. None if it is too short.
+
+        urFirm when the caller supplied one, otherwise inferred from the
+        packet. Inferring matters because robUR builds Robot() without a
+        urFirm, which used to send every packet down the `else` branch and
+        parse a 1452-byte 5.x packet with the 86-field 3.x layout -- then read
+        unp[101] off it. That raised IndexError on the first packet of every
+        session, killing the receive thread before it ever reached
+        notifyAll(), which is what made get_safety_mode() -- and so every
+        move, since movel/movej/movels all call it first -- hang forever.
+        """
+        if self.urFirm is not None:
+            return self.urFirm
+        for size, firm in self._FIRMWARE_BY_PKGSIZE:
+            if pkgsize >= size:
+                return firm
+        return None
+
     def __recv_rt_data(self):
         head = self.__recv_bytes(4)
         # Record the timestamp for this logical package
@@ -247,22 +316,27 @@ class URRTMonitor(threading.Thread):
             'Received header telling that package is %s bytes long',
             pkgsize)
         payload = self.__recv_bytes(pkgsize - 4)
-        if self.urFirm is not None:
-            if self.urFirm == 5.1:
-                unp = self.rtstruct5_1.unpack(payload[:self.rtstruct5_1.size])
-            if self.urFirm == 5.9:
-                unp = self.rtstruct5_9.unpack(payload[:self.rtstruct5_9.size])
+        firm = self._firmware_for(pkgsize)
+        if firm is None:
+            self.logger.warning(
+                'Error, Received packet of length smaller than 540: %s ', pkgsize)
+            return
+        if firm >= 5.1:
+            # 5.1 and 5.9 share a size; 5.9 adds fields the 5.1 layout stops
+            # short of, and reading a 5.1 controller with it only costs
+            # trailing values nothing asks for on that firmware.
+            struct_ = self.rtstruct5_9 if firm >= 5.9 else self.rtstruct5_1
+        elif firm >= 3.1:
+            struct_ = self.rtstruct692
         else:
-            if pkgsize >= 692:
-                unp = self.rtstruct692.unpack(payload[:self.rtstruct692.size])
-            elif pkgsize >= 540:
-                unp = self.rtstruct540.unpack(payload[:self.rtstruct540.size])
-            else:
-                self.logger.warning(
-                    'Error, Received packet of length smaller than 540: %s ',
-                    pkgsize)
-                return
-        
+            struct_ = self.rtstruct540
+        if struct_.size > len(payload):
+            self.logger.warning(
+                'Packet of %s bytes is too short for the %s layout (%s bytes); '
+                'ignoring it.', pkgsize, firm, struct_.size)
+            return
+        unp = struct_.unpack(payload[:struct_.size])
+
 
         with self._dataAccess:
             self._timestamp = timestamp
@@ -285,14 +359,14 @@ class URRTMonitor(threading.Thread):
             self._tcp = np.array(unp[73:79])            
             self._joint_current = np.array(unp[43:49])
             self._safety_mode = unp[101]
-            if self.urFirm >= 3.1:
+            if firm >= 3.1:
                 self._joint_temperature = np.array(unp[86:92])
                 self._joint_voltage = np.array(unp[124:130])
                 self._main_voltage = unp[121]
                 self._robot_voltage = unp[122]
                 self._robot_current = unp[123]
 
-            if self.urFirm>= 5.9:
+            if firm >= 5.9:
                 self._qdTarget = np.array(unp[7:13])
                 self._qddTarget = np.array(unp[13:19])
                 self._iTarget = np.array(unp[19:25])
@@ -398,9 +472,61 @@ class URRTMonitor(threading.Thread):
         self.stop()
         self.join()
 
+    #: Seconds of silence on the 30003 stream before the socket is treated as
+    #: dead and reconnected. The controller streams at 125 Hz (8 ms/packet), so
+    #: two seconds of nothing is three orders of magnitude past healthy.
+    RT_RECV_TIMEOUT_S = 2.0
+
+    def _open_rt_socket(self):
+        """A fresh, connected 30003 socket with a recv timeout. A new socket
+        each time because a dropped one cannot be reconnected, and because this
+        controller hands a fresh connection a new burst of data where the old
+        one has gone silent (see the reconnect loop in run)."""
+        self._close_rt_socket()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        sock.settimeout(self.RT_RECV_TIMEOUT_S)
+        sock.connect((self._urHost, 30003))
+        self._rtSock = sock
+
+    def _close_rt_socket(self):
+        try:
+            if self._rtSock is not None:
+                self._rtSock.close()
+        except Exception:
+            pass
+
     def run(self):
+        """Keep the 30003 realtime stream alive, reconnecting when it stalls.
+
+        This controller's realtime interface intermittently goes quiet on a
+        connection that stays open -- the socket does not error, it just stops
+        delivering. Left alone, the monitor's socket dies while fresh ones
+        still work, so every get_safety_mode (and thus every move) fails until
+        the server is restarted. So a stall (recv timeout, set on the socket)
+        or any socket/parse error is caught here: wake any waiter so it gets
+        its timeout rather than blocking, drop the dead socket, reconnect, and
+        carry on. A fresh connection gets a fresh stream.
+        """
         self._stop_event = False
-        self._rtSock.connect((self._urHost, 30003))
+        backoff = 0.5
         while not self._stop_event:
-            self.__recv_rt_data()
-        self._rtSock.close()
+            try:
+                self._open_rt_socket()
+                backoff = 0.5                       # reset once a connection is up
+                while not self._stop_event:
+                    self.__recv_rt_data()
+            except Exception as e:
+                self.logger.warning(
+                    "Realtime monitor lost the 30003 stream (%s); reconnecting.", e)
+                with self._dataEvent:               # waiters get a timeout, not silence
+                    self._dataEvent.notifyAll()
+                self._close_rt_socket()
+                waited = 0.0
+                while not self._stop_event and waited < backoff:
+                    time.sleep(0.05)
+                    waited += 0.05
+                backoff = min(backoff * 2.0, 5.0)   # back off, capped
+        self._close_rt_socket()
+        with self._dataEvent:
+            self._dataEvent.notifyAll()

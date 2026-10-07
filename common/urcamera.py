@@ -272,6 +272,15 @@ class camera(object):
         self.AT_ids = []
         self.decoded = None
         self.AT_id = None       # tag number within the family, e.g. 1, 2, ...
+        # Which tag to select when a caller does not name one. None keeps the
+        # original behaviour: of several tags in view, take the one nearest the
+        # image center. Set it when more than one tag can be in frame and only
+        # one of them is the subject -- "nearest the center" is decided per
+        # frame, so a sequence that tilts, rolls and descends can silently
+        # change its mind about which tag it is working on halfway through.
+        # Set alongside AT_physical_size, which has the same scope: both
+        # describe the tag being looked at, not the frame in hand.
+        self.AT_preferred_id = None
         self.AT_euler = None
         self.AT_translation = None
         self.AT_pose = None
@@ -378,8 +387,11 @@ class camera(object):
     def decodeAT(self, tag_id=None):
         # Decode the AprilTags in the current image and keep one of them.
         #   tag_id : select this tag number; returns None when it is not in
-        #            view. When omitted and several tags are visible, the tag
-        #            nearest the image center is selected.
+        #            view. When omitted, self.AT_preferred_id is used, and
+        #            when that is None too, the tag nearest the image center
+        #            is selected.
+        if tag_id is None:
+            tag_id = self.AT_preferred_id
         # Every tag seen is kept in self.AT_detections / self.AT_ids; the
         # selected one is returned and described by self.decoded, self.AT_id,
         # self.AT_euler, self.AT_translation and self.AT_pose.

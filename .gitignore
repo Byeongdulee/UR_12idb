@@ -16,3 +16,4 @@ ur_12idb.egg-info/SOURCES.txt
 ur_12idb.egg-info/requires.txt
 ur_12idb.egg-info/PKG-INFO
 ur_12idb.egg-info/dependency_links.txt
+*.json

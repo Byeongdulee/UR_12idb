@@ -1217,9 +1217,32 @@ def roll_around_tag(rob, step=0.1, tol=AT_ALIGN_TOL, max_steps=24,
                                    max_iter=AT_CENTER_MAX_ITER)
     return _fail("Reached max_steps before the camera faced down.")
 
+#: How far off vertical the camera may be and still count as facing down, as
+#: the Z component of its unit Z axis. 0.999 is about 2.6 degrees -- the same
+#: tolerance robUR.is_Z_aligned() uses, but signed, because a camera pointing
+#: straight up is equally "aligned" and is not what this asks about.
+AT_FACE_DOWN_TOL = -0.999
+
+
+def camera_faces_down(rob, tol=AT_FACE_DOWN_TOL):
+    """Is the camera already looking straight down?
+
+    Asked of the camera TCP, not the tool: camtcp carries a 30 degree tilt, so
+    a level gripper does not mean a level camera. The active TCP is put back as
+    it was found, since callers read poses around this.
+    """
+    previous = rob.get_tcp()
+    try:
+        rob.set_tcp(rob.camtcp)
+        return rob.get_pose().orient.vec_z[2] <= tol
+    finally:
+        rob.set_tcp(previous)
+
+
 def search_apriltag_by_tilt(rob, ref_pos=[],
                             tilt_range=10, tilt_step=5, align_to_tag=False,
-                            stop_event=None, skip_roll=False):
+                            stop_event=None, skip_roll=False,
+                            from_current=False):
     """Search for an AprilTag by tilting the camera at a reference position.
 
     Sequence:
@@ -1237,13 +1260,27 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
     surface the tag is not parallel to -- and step 4 squares the camera to
     the tag instead of tipping it face-down.
 
-    skip_roll keeps the camera face-normal-down instead of running step 4's
-    roll_around_tag: once the tag is found and centered, the tool is leveled in
-    place with rob.Zalign() (which preserves the XY position and heading) and
-    then re-centered on the tag. Use it to record a station's position with a
-    clean level orientation -- for a tilted seat whose real angle is taught by
-    hand afterward -- rather than tipping/squaring the camera to the tag. It
-    overrides align_to_tag's squaring for the same reason.
+    skip_roll points the camera straight down instead of running step 4's
+    roll_around_tag: once the tag is found and centered, the camera TCP is made
+    active and rob.Zalign() levels the *camera* (not the gripper) to face down,
+    preserving XY position and heading, and the camera is re-centered on the
+    tag. Zalign acts on whichever TCP is active, so the camera TCP is the one
+    that makes the camera -- rather than the tool, which the camera is mounted
+    on at camtcp's fixed tilt -- end up level. The tilt grid still runs
+    unchanged to find the tag; only the final orientation differs. Use it to
+    record a station's position with a clean level orientation -- for a tilted
+    seat whose real angle is taught by hand afterward -- rather than
+    tipping/squaring the camera to the tag. It overrides align_to_tag's
+    squaring for the same reason.
+
+    from_current searches from wherever the arm is standing instead of driving
+    to ref_pos first: step 1 skips the reference move and the Zalign, and runs
+    put_camera2tcp() only if the camera is not already facing down
+    (camera_faces_down). That call translates the arm by the camera offset
+    rather than just reorienting it, so on an already-level camera it would
+    move it off the thing the operator aimed it at. ref_pos is then unused for
+    motion -- the tilt grid pivots about wherever step 1 leaves the tool, as
+    it does on the normal path.
 
     stop_event, if given, is a threading.Event checked before each move in
     every loop below; a caller that also calls rob.robot.stopj() to interrupt
@@ -1265,13 +1302,31 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
         return False
     try:
         # 1. Move to the reference position with the current (gripper) TCP.
-        print(f"Moving to reference position {list(ref_pos)} ...")
         rob.set_tcp(rob.tcp)
-        if not align_to_tag:
-            print("Z align first.............")
-            rob.Zalign()  # keep the current orientation
-        rob.moveto(list(ref_pos))
-        rob.put_camera2tcp()  # ensure the camera is in the TCP frame
+        if from_current:
+            # Search from where the arm is already standing: no reference
+            # move, and no levelling, because the operator put it there on
+            # purpose. put_camera2tcp() is a real ~4 cm displacement, not a
+            # reorientation, so running it on a camera that already looks
+            # down would drag it off whatever it was aimed at -- the one
+            # thing this mode exists to avoid. It still runs when the camera
+            # is NOT facing down: the tilt grid below sweeps only +/-10
+            # degrees about where it starts and cannot recover a wrist left
+            # at some arbitrary angle.
+            if camera_faces_down(rob):
+                print("Searching from the current position "
+                      "(camera already faces down).")
+            else:
+                print("Searching from the current position "
+                      "(bringing the camera face-down first).")
+                rob.put_camera2tcp()
+        else:
+            print(f"Moving to reference position {list(ref_pos)} ...")
+            if not align_to_tag:
+                print("Z align first.............")
+                rob.Zalign()  # keep the current orientation
+            rob.moveto(list(ref_pos))
+            rob.put_camera2tcp()  # ensure the camera is in the TCP frame
         # 2. Switch to the camera TCP so rotations pivot about the camera point.
         #rob.set_tcp(rob.camtcp)
         found = None
@@ -1295,6 +1350,18 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
                 found = (ax, ay)
                 break
         if found is None:
+            # "Nothing in view" and "the wrong tag in view" need different
+            # things done about them, and with a preferred tag set the two
+            # look identical from here -- decodeAT returns None either way.
+            # AT_ids still holds everything the last frame saw, so say so.
+            wanted = getattr(rob.camera, 'AT_preferred_id', None)
+            seen = list(getattr(rob.camera, 'AT_ids', []) or [])
+            if wanted is not None and seen and wanted not in seen:
+                return _fail(
+                    "AprilTag %d not found within the tilt search range; "
+                    "the tags in view were %s. Either the camera is over the "
+                    "wrong station, or apriltag_ids names the wrong number "
+                    "for this one." % (wanted, seen))
             return _fail("No AprilTag found within the tilt search range.")
 
         print("Moving up 1 cm ...")
@@ -1304,14 +1371,20 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
                                    max_iter=AT_CENTER_MAX_ITER)
         # 3./4. Bring the camera to its final orientation, keeping the tag in
         # view. Normally roll_around_tag tips it face-down (or squares it to a
-        # tilted tag); skip_roll instead levels the tool in place so the camera
-        # stays face-normal-down, leaving any real seat tilt to a hand teach.
-        if not skip_roll:
-        #     print("Skipping roll: leveling camera to face straight down ...")
-        #     rob.set_tcp(rob.tcp)   # level the gripper TCP, not the pivot TCP
-        #     rob.Zalign()           # face down, keep XY position and heading
-        #     rob.put_tcp2camera()
-        # else:
+        # tilted tag); skip_roll instead levels the CAMERA to point straight
+        # down and leaves any real seat tilt to a hand teach.
+        if skip_roll:
+            # Zalign operates on whichever TCP is active, so the camera TCP has
+            # to be the one set here: with the gripper TCP it would level the
+            # gripper and leave the camera at camtcp's built-in 30 deg tilt,
+            # not facing down. It keeps XY position and heading, so the tag the
+            # tilt grid just found stays in frame. The camera TCP is left
+            # active for the centering and descent below -- those are all
+            # camera-frame, the same end state roll_around_tag leaves.
+            print("Keep camera face-down: leveling the camera to point straight down ...")
+            rob.set_tcp(rob.camtcp)
+            rob.Zalign()
+        else:
             if align_to_tag:
                 print("Squaring the camera to the AprilTag's own normal ...")
             else:

@@ -239,6 +239,29 @@ class UR(QObject):
     def unlock_stop(self):
         self.dashboard.unlock()
 
+    def set_freedrive(self, on, timeout=600):
+        """Put the arm in freedrive (hand-guiding) mode, or take it out.
+
+        In freedrive the brakes release and an operator can push the arm to a
+        pose by hand -- for teaching a station, or lifting the wrist out of the
+        way. The controller holds freedrive for at most ``timeout`` seconds and
+        then re-stiffens on its own (urx streams ``freedrive_mode()`` followed
+        by ``sleep(timeout)``), so a session left on recovers by itself; pass
+        ``on=False`` to end it immediately.
+
+        Entering freedrive is refused while the robot is not in a normal safety
+        state -- releasing the brakes on a stopped or faulted robot is exactly
+        what should not happen. Leaving it is always allowed, so it stays usable
+        as a recovery.
+        """
+        if on:
+            mode = self.get_safety_mode()
+            if mode > 2:
+                raise RobotException(SafetyStatus(mode))
+            self.robot.set_freedrive(True, timeout=timeout)
+        else:
+            self.robot.set_freedrive(False)
+
     def is_protective_stopped(self):
         return self.robot.secmon.is_protective_stopped()   
 
