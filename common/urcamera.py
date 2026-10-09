@@ -185,23 +185,29 @@ def decodeAT(img=[], F=[], cam_f=camera_f, imgH=default_imgH, imgV=default_imgV)
 def selectAT(detections, tag_id=None, center=None):
     # Pick a single tag out of a list of detections. All tags of the tag36h11
     # family look alike to the detector; they are told apart by .tag_id.
-    #   tag_id : return only this tag number, or None when it is not in view.
-    #   center : (x, y) of the image center. When no tag_id is asked for and
-    #            several tags are visible, the one nearest this point wins.
+    #   tag_id : accept only this tag number -- or, given a collection of numbers
+    #            (e.g. the carousel tags 31-40), any one of them. None accepts any
+    #            tag. Returns None when nothing acceptable is in view.
+    #   center : (x, y) of the image center. Among the acceptable tags in view,
+    #            the one nearest this point wins.
     # Returns the chosen Detection, or None.
     if detections is None or len(detections) == 0:
         return None
     if tag_id is not None:
-        for d in detections:
-            if d.tag_id == tag_id:
-                return d
-        return None
-    if len(detections) == 1:
-        return detections[0]
-    if center is None:
-        return detections[0]
+        # A single id or a collection of acceptable ids.
+        try:
+            allowed = set(tag_id)
+        except TypeError:
+            allowed = {tag_id}
+        candidates = [d for d in detections if d.tag_id in allowed]
+        if not candidates:
+            return None
+    else:
+        candidates = list(detections)
+    if len(candidates) == 1 or center is None:
+        return candidates[0]
     cx, cy = center
-    return min(detections,
+    return min(candidates,
                key=lambda d: (d.center[0]-cx)**2 + (d.center[1]-cy)**2)
 
 # Shapes matching what pyzbar returned, so every caller below -- and in
@@ -263,6 +269,13 @@ class camera(object):
         self.imgV = default_imgV
         self.QR_physical_size = QRsavSize
         self.AT_physical_size = apriltagsize
+        # Linear correction applied to the measured AprilTag distance:
+        # QRdistance = raw * dist_scale + dist_offset. Defaults are a no-op; the
+        # application sets them from a calibration (the raw pinhole distance has a
+        # small scale and offset error from the lens/focal estimate). See
+        # decodeAT and the server's camera-distance-correction wiring.
+        self.dist_scale = 1.0
+        self.dist_offset = 0.0
         self.intrinsic_mtx = []
         self.image = None
         # --- AprilTag state -------------------------------------------------
@@ -434,7 +447,11 @@ class camera(object):
             y1 = pgpnts[ind2][1]
             d = math.sqrt((x0-x1)**2+(y0-y1)**2)
             dist.append(d)
-        self.QRdistance = self.AT_physical_size/np.mean(dist)*self.camera_f
+        # Raw pinhole distance, then the calibrated linear correction (no-op
+        # unless dist_scale/dist_offset were set): the raw value has a small
+        # scale and offset error from the focal-length/lens estimate.
+        raw = self.AT_physical_size/np.mean(dist)*self.camera_f
+        self.QRdistance = raw*self.dist_scale + self.dist_offset
         self.QRposition = r.center
         self.QRsize = [math.dist(pgpnts[0], pgpnts[1]), 
                        math.dist(pgpnts[1], pgpnts[2])]

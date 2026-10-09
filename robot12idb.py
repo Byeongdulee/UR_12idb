@@ -998,7 +998,7 @@ class UR5(UR_cam_grip):
 #    tcp = [0.0,0.0,0.167,0.0,0.0,0.0]
     tcp = [0.0,0.0,0.15+toolchanger_length,0.0,0.0,0.0]
 #    camtcp = [-0.001, 0.04, 0.015, -math.pi/180*30, 0, 0]
-    camtcp = [0, 0.0433, 0.015+toolchanger_length, -math.pi/180*30, 0, 0]
+    camtcp = [0, 0.0493, 0.015+toolchanger_length, -math.pi/180*30, 0, 0]
 
     def __init__(self, name = 'UR5', package=ROBOT_PYTHON_PACKAGE, grippertype=1, cameratype=1, ip=None):
 # definition of Cartesian Axis of UR3 at 12idb.

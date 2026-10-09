@@ -868,21 +868,24 @@ def showcamera_ip(ip=None, name='UR5'):
         time.sleep(0.1)
     cv2.destroyAllWindows()
 
-def _detect_apriltag(rob, settle=5, tag_id=None, stop_event=None):
+def _detect_apriltag(rob, settle=5, tag_id=None, stop_event=None, fresh=False):
     """Capture one frame and return the AprilTag detection (or None).
 
     tag_id selects a specific tag number; when omitted and several tags are
     in view, the one nearest the image center is used. stop_event, if given,
     is checked each poll so an operator abort doesn't have to wait out the
-    full settle timeout."""
+    full settle timeout. fresh forces a new capture on every poll even when a
+    live display loop is running -- use it right after a move, so the reading is
+    not a frame the display loop grabbed before the arm got there."""
     t0 = time.time()
     r = None
     while True:
         if stop_event is not None and stop_event.is_set():
             return None
         # When a live display loop (showcamera) is already capturing, reuse its
-        # latest frame instead of grabbing our own.
-        if not rob.camera._running:
+        # latest frame instead of grabbing our own -- unless `fresh`, which must
+        # have a just-captured frame regardless of the display loop.
+        if fresh or not rob.camera._running:
             rob.camera.capture()
         r = rob.camera.decodeAT(tag_id=tag_id)      # populates rob.camera.decoded
         if r is not None:
@@ -897,30 +900,69 @@ def _detect_apriltag(rob, settle=5, tag_id=None, stop_event=None):
             return None
     return r
 
-def approach_tag_distance(rob, target, tol=0.003, max_steps=6, max_travel=0.30,
-                          stop_event=None):
+
+def _flush_frames(rob, n=1):
+    """Grab and discard `n` frames so the next read is current.
+
+    The wrist camera serves its last ENCODED frame over HTTP, so a capture taken
+    right after a move can hand back a frame from before the arm settled.
+    Discarding a frame (or two) first clears that straggler out of the way."""
+    for _ in range(max(0, n)):
+        try:
+            rob.camera.capture()
+        except Exception:                            # noqa: BLE001
+            break
+
+
+def approach_tag_distance(rob, target, tol=0.003, max_steps=8, max_travel=0.30,
+                          stop_event=None, settle_s=0.4, flush=1, confirm_tol=0.004):
     """Move the camera until it sits `target` m from the tag it is looking at.
 
     Returns the last measured camera-to-tag distance, or None if no tag could
     be read at all. rob.camera.AT_physical_size has to already be set to the
     size of the tag in view, since the measurement is proportional to it.
 
-    Measure and move is iterated because each step is only as good as the
-    frame behind it. max_travel caps the total distance this can command, so
-    one bad reading cannot walk the arm into the hardware.
+    Each measurement is taken AFTER the move has settled and a frame has been
+    flushed, and it is confirmed by a second fresh read agreeing within
+    `confirm_tol` -- without this the reading lagged the arm (the HTTP camera
+    serves a frame from before the move finished), so the loop thought it was
+    farther out than it was and drove straight past the target. max_travel caps
+    the total commanded distance, so one bad reading cannot walk the arm into the
+    hardware.
     """
+    def fresh_distance():
+        # Settle, flush a straggler frame, then read -- and read again to make
+        # sure the two agree, so a single lagged frame cannot set the step.
+        if settle_s:
+            time.sleep(settle_s)
+        _flush_frames(rob, flush)
+        if _detect_apriltag(rob, fresh=True, stop_event=stop_event) is None:
+            return None
+        d1 = rob.camera.QRdistance
+        if _detect_apriltag(rob, fresh=True, stop_event=stop_event) is None:
+            return d1
+        d2 = rob.camera.QRdistance
+        if abs(d2 - d1) > confirm_tol:
+            # The two disagree -> the arm/camera had not settled; take one more
+            # and trust the latest (freshest) reading.
+            _flush_frames(rob, flush)
+            if _detect_apriltag(rob, fresh=True, stop_event=stop_event) is not None:
+                return rob.camera.QRdistance
+        return d2
     measured = None
     travelled = 0.0
     for _ in range(max_steps):
         if stop_event is not None and stop_event.is_set():
             return measured
-        if _detect_apriltag(rob, stop_event=stop_event) is None:
+        measured = fresh_distance()
+        if measured is None:
             return measured
-        measured = rob.camera.QRdistance
         step = measured - target
         print(f"AprilTag is {measured:.4f} m from the camera (target {target:.4f} m).")
         if abs(step) <= tol:
             break
+        # Never command more than what is left to the target in one step, and cap
+        # the running total, so a stale reading cannot drive past the tag.
         if travelled + abs(step) > max_travel:
             step = math.copysign(max_travel - travelled, step)
             if abs(step) <= 0:
@@ -1242,7 +1284,7 @@ def camera_faces_down(rob, tol=AT_FACE_DOWN_TOL):
 def search_apriltag_by_tilt(rob, ref_pos=[],
                             tilt_range=10, tilt_step=5, align_to_tag=False,
                             stop_event=None, skip_roll=False,
-                            from_current=False):
+                            from_current=False, rz_offset=0.0):
     """Search for an AprilTag by tilting the camera at a reference position.
 
     Sequence:
@@ -1289,6 +1331,12 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
     failure path returns through the same except block, so the TCP is always
     restored no matter which phase (tilt search, face-down roll, or descent)
     was interrupted.
+
+    rz_offset (degrees) turns the final camera heading by that much about
+    the tag normal, on top of squaring to the tag. It is for a tag mounted
+    rotated about its own normal (the carousel tag is on at 90 deg): the
+    search then ends aligned to the seat's frame rather than the tag's, so
+    the descent and the pose recorded afterwards are both on the real frame.
 
     Returns True if a tag was found and centered, False otherwise (including
     on operator-requested abort).
@@ -1356,12 +1404,18 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
             # AT_ids still holds everything the last frame saw, so say so.
             wanted = getattr(rob.camera, 'AT_preferred_id', None)
             seen = list(getattr(rob.camera, 'AT_ids', []) or [])
-            if wanted is not None and seen and wanted not in seen:
+            # `wanted` may be a single id or a collection of acceptable ones
+            # (the carousel tags 31-40); normalise to a set either way.
+            try:
+                allowed = set(wanted) if wanted is not None else set()
+            except TypeError:
+                allowed = {wanted}
+            if allowed and seen and not (allowed & set(seen)):
                 return _fail(
-                    "AprilTag %d not found within the tilt search range; "
+                    "none of AprilTag %s found within the tilt search range; "
                     "the tags in view were %s. Either the camera is over the "
-                    "wrong station, or apriltag_ids names the wrong number "
-                    "for this one." % (wanted, seen))
+                    "wrong station, or apriltag_ids names the wrong number(s) "
+                    "for this one." % (sorted(allowed), seen))
             return _fail("No AprilTag found within the tilt search range.")
 
         print("Moving up 1 cm ...")
@@ -1398,7 +1452,7 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
                                    max_iter=AT_CENTER_MAX_ITER)
         if rob.camera.AT_euler is None:
             return _fail("Lost the AprilTag while centering; cannot refresh the camera pose.")
-        rob.rotate_around_Zaxis_camera(180+rob.camera.AT_euler[2])  # refresh the camera pose
+        rob.rotate_around_Zaxis_camera(180+rob.camera.AT_euler[2]+rz_offset)  # refresh the camera pose
         rob.center_camera2apriltag(tol_m=AT_CENTER_TOL_M,
                                    max_iter=AT_CENTER_MAX_ITER)
 
@@ -1411,7 +1465,7 @@ def search_apriltag_by_tilt(rob, ref_pos=[],
             r = _detect_apriltag(rob, stop_event=stop_event)
         # Re-align the camera's Z rotation to the tag after descending.
         if r is not None:
-            rob.rotate_around_Zaxis_camera(180+rob.camera.AT_euler[2])
+            rob.rotate_around_Zaxis_camera(180+rob.camera.AT_euler[2]+rz_offset)
 
         return True
     except Exception as ex:
